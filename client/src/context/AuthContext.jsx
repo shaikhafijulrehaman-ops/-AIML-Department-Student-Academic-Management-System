@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { INITIAL_STUDENTS, INITIAL_UPDATE_REQUESTS, getMaxCompletedSemForTerm } from '../data/mockData';
+import { INITIAL_STUDENTS, INITIAL_UPDATE_REQUESTS, getMaxCompletedSemForTerm, getTermsForYear } from '../data/mockData';
 
 const AuthContext = createContext(null);
 
@@ -22,11 +22,16 @@ const sanitizeRequestText = (str) => {
 
 const sanitizeRequestsList = (list) => {
   if (!Array.isArray(list)) return [];
-  return list.map(req => ({
-    ...req,
-    title: sanitizeRequestText(req.title),
-    instructions: sanitizeRequestText(req.instructions),
-  }));
+  return list.map(req => {
+    const allowed = getTermsForYear(req.targetYear);
+    const validSem = allowed.includes(req.targetSemester) ? req.targetSemester : (allowed[0] || req.targetSemester);
+    return {
+      ...req,
+      targetSemester: validSem,
+      title: sanitizeRequestText(req.title),
+      instructions: sanitizeRequestText(req.instructions),
+    };
+  });
 };
 
 const sanitizeStudentsList = (list) => {
@@ -181,11 +186,13 @@ export const AuthProvider = ({ children }) => {
    * HOD creates a year-specific update request
    */
   const createYearSpecificUpdateRequest = ({ title, targetYear, targetSemester, instructions }) => {
+    const allowed = getTermsForYear(targetYear);
+    const validSemester = allowed.includes(targetSemester) ? targetSemester : (allowed[0] || targetSemester);
     const newReq = {
       id: `req_${Date.now()}`,
       title: title.trim(),
       targetYear,
-      targetSemester,
+      targetSemester: validSemester,
       instructions: instructions ? instructions.trim() : 'Please update your official semester grades.',
       createdAt: new Date().toISOString().split('T')[0],
       deadline: new Date(Date.now() + 15 * 86400000).toISOString().split('T')[0],

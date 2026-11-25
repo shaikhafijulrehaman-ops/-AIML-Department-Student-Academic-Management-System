@@ -28,7 +28,7 @@ import {
 import BRANDING from '../../config/branding';
 import CollegeLogo from '../../components/CollegeLogo';
 import { useAuth } from '../../context/AuthContext';
-import { getMaxCompletedSemForTerm, getStudentLatestAcademics, ALL_SEMESTER_TERMS } from '../../data/mockData';
+import { getMaxCompletedSemForTerm, getStudentLatestAcademics, ALL_SEMESTER_TERMS, getTermsForYear, YEAR_ALLOWED_TERMS } from '../../data/mockData';
 import { useTheme } from '../../context/ThemeContext';
 import { THEMES } from '../../config/theme';
 
@@ -727,16 +727,25 @@ export default function StudentDashboardPage() {
                   <select
                     id="prof-year"
                     value={profileForm.year}
-                    onChange={(e) => handleProfileFieldChange('year', e.target.value)}
+                    onChange={(e) => {
+                      const year = e.target.value;
+                      const allowed = getTermsForYear(year);
+                      setProfileForm((prev) => ({
+                        ...prev,
+                        year,
+                        term: allowed.includes(prev.term) ? prev.term : (allowed[0] || '')
+                      }));
+                      setIsProfileDirty(true);
+                    }}
                     className="w-full p-2.5 rounded-xl border border-slate-300 bg-white outline-none focus:ring-1 focus:ring-[#5E8881] font-semibold"
                   >
-                    <option value="2nd Year">2nd Year</option>
-                    <option value="3rd Year">3rd Year</option>
-                    <option value="4th Year">4th Year</option>
+                    <option value="2nd Year">Second Year (2nd Year)</option>
+                    <option value="3rd Year">Third Year (3rd Year)</option>
+                    <option value="4th Year">Fourth Year (4th Year)</option>
                   </select>
                 </div>
 
-                {/* Term Options: 2-1, 2-2, 3-1, 3-2, 4-1, 4-2 */}
+                {/* Term Options strictly filtered by selected year */}
                 <div>
                   <label className="block font-bold text-slate-700 mb-1" htmlFor="prof-term">
                     Current Semester / Term
@@ -747,12 +756,11 @@ export default function StudentDashboardPage() {
                     onChange={(e) => handleProfileFieldChange('term', e.target.value)}
                     className="w-full p-2.5 rounded-xl border border-slate-300 bg-white outline-none focus:ring-1 focus:ring-[#5E8881] font-semibold"
                   >
-                    <option value="2-1">Term 2-1 (2nd Year)</option>
-                    <option value="2-2">Term 2-2 (2nd Year)</option>
-                    <option value="3-1">Term 3-1 (3rd Year)</option>
-                    <option value="3-2">Term 3-2 (3rd Year)</option>
-                    <option value="4-1">Term 4-1 (4th Year)</option>
-                    <option value="4-2">Term 4-2 (4th Year)</option>
+                    {getTermsForYear(profileForm.year).map((term) => (
+                      <option key={term} value={term}>
+                        Term {term} ({profileForm.year})
+                      </option>
+                    ))}
                   </select>
                 </div>
               </div>

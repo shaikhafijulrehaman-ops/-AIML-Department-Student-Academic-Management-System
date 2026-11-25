@@ -21,22 +21,45 @@ export const ALL_SEMESTER_TERMS = [
 ];
 
 /**
- * Returns max completed semester number based on exact eligibility rules:
- * - 2-1 students: completed semesters up to 2 (1-1, 1-2)
- * - 2-2 students: completed semesters up to 3 (1-1, 1-2, 2-1)
- * - 3-1 students: completed semesters up to 4 (1-1, 1-2, 2-1, 2-2)
- * - 3-2 students: completed semesters up to 5 (1-1, 1-2, 2-1, 2-2, 3-1)
- * - 4-1 students: completed semesters up to 6 (1-1 to 3-2)
- * - 4-2 students: completed semesters up to 7 (1-1 to 4-1)
+ * Strict Year-to-Term mapping:
+ * - Second Year: 2-1, 2-2
+ * - Third Year: 3-1, 3-2
+ * - Fourth Year: 4-1, 4-2
+ */
+export const YEAR_ALLOWED_TERMS = {
+  '2nd Year': ['2-1', '2-2'],
+  '3rd Year': ['3-1', '3-2'],
+  '4th Year': ['4-1', '4-2'],
+  'Second Year': ['2-1', '2-2'],
+  'Third Year': ['3-1', '3-2'],
+  'Fourth Year': ['4-1', '4-2'],
+};
+
+export const getTermsForYear = (year) => {
+  if (!year) return [];
+  if (year.includes('2') || year.toLowerCase().includes('second')) return ['2-1', '2-2'];
+  if (year.includes('3') || year.toLowerCase().includes('third')) return ['3-1', '3-2'];
+  if (year.includes('4') || year.toLowerCase().includes('fourth')) return ['4-1', '4-2'];
+  return [];
+};
+
+/**
+ * Returns max completed semester number based on term:
+ * - 2-1 students: up to Sem 3 (2-1)
+ * - 2-2 students: up to Sem 4 (2-2)
+ * - 3-1 students: up to Sem 5 (3-1)
+ * - 3-2 students: up to Sem 6 (3-2)
+ * - 4-1 students: up to Sem 7 (4-1)
+ * - 4-2 students: up to Sem 8 (4-2)
  */
 export const getMaxCompletedSemForTerm = (term) => {
   switch (term) {
-    case '2-1': return 2;
-    case '2-2': return 3;
-    case '3-1': return 4;
-    case '3-2': return 5;
-    case '4-1': return 6;
-    case '4-2': return 7;
+    case '2-1': return 3;
+    case '2-2': return 4;
+    case '3-1': return 5;
+    case '3-2': return 6;
+    case '4-1': return 7;
+    case '4-2': return 8;
     default: return 0;
   }
 };
@@ -340,40 +363,40 @@ export const INITIAL_STUDENTS = [
 export const INITIAL_UPDATE_REQUESTS = [
   {
     id: 'req_1',
-    title: '4th Semester CGPA Update',
+    title: '5th Semester CGPA Update',
     targetYear: '3rd Year',
-    targetSemester: '2-2',
-    instructions: 'All 3rd Year (3-1) students are requested to enter and confirm their verified 2-2 semester CGPA.',
+    targetSemester: '3-1',
+    instructions: 'All 3rd Year (3-1) students are requested to enter and confirm their verified 3-1 semester CGPA.',
     createdAt: '2026-11-10',
     deadline: '2026-12-05',
     status: 'Active'
   },
   {
     id: 'req_2',
-    title: '6th Semester CGPA Update',
+    title: '7th Semester CGPA Update',
     targetYear: '4th Year',
-    targetSemester: '3-2',
-    instructions: 'All 4th Year (4-1) students must verify their 3-2 semester marks statement and update official grades.',
+    targetSemester: '4-1',
+    instructions: 'All 4th Year (4-1) students must verify their 4-1 semester marks statement and update official grades.',
     createdAt: '2026-11-14',
     deadline: '2026-12-10',
     status: 'Active'
   },
   {
     id: 'req_3',
-    title: '2nd Semester CGPA Update',
+    title: '3rd Semester CGPA Update',
     targetYear: '2nd Year',
-    targetSemester: '1-2',
-    instructions: 'All 2nd Year students must ensure their 1-2 semester CGPA records are confirmed.',
+    targetSemester: '2-1',
+    instructions: 'All 2nd Year (2-1) students must ensure their 2-1 semester CGPA records are confirmed.',
     createdAt: '2026-11-18',
     deadline: '2026-12-15',
     status: 'Active'
   },
   {
     id: 'req_4',
-    title: '5th Semester CGPA Update',
-    targetYear: '3rd Year',
-    targetSemester: '3-1',
-    instructions: 'All 3rd Year (3-1) students are requested to enter and confirm their verified 3-1 semester CGPA.',
+    title: '4th Semester CGPA Update',
+    targetYear: '2nd Year',
+    targetSemester: '2-2',
+    instructions: 'All 2nd Year (2-2) students are requested to enter and confirm their verified 2-2 semester CGPA.',
     createdAt: '2026-11-20',
     deadline: '2026-12-20',
     status: 'Active'

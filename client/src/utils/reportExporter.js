@@ -14,6 +14,9 @@
  * - Applied academic filters (SSC %, Inter %, CGPA, Location, Semester)
  */
 
+import { jsPDF } from 'jspdf';
+import autoTable from 'jspdf-autotable';
+import * as XLSX from 'xlsx';
 import BRANDING from '../config/branding.js';
 
 const INSTITUTION_HEADER = {
@@ -207,7 +210,7 @@ export const generateReportNaming = ({ type, request, activeRequest, appliedFilt
 };
 
 /**
- * Downloads an Excel (.xlsx) file containing institutional letterhead and data table
+ * Downloads a genuine Excel (.xlsx) OpenXML workbook containing institutional letterhead and data table
  */
 export const downloadExcelReport = ({ title, filename, filtersDescription, columns, data }) => {
   const currentDate = new Date().toLocaleDateString('en-IN', {
@@ -219,77 +222,63 @@ export const downloadExcelReport = ({ title, filename, filtersDescription, colum
   });
 
   const cleanFilename = sanitizeFilename(filename || 'AIML_Academic_Report');
+  const finalFilename = cleanFilename.endsWith('.xlsx') ? cleanFilename : `${cleanFilename}.xlsx`;
 
-  let tableHtml = `
-    <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
-    <head>
-      <!--[if gte mso 9]>
-      <xml>
-        <x:ExcelWorkbook>
-          <x:ExcelWorksheets>
-            <x:ExcelWorksheet>
-              <x:Name>${cleanFilename.substring(0, 30)}</x:Name>
-              <x:WorksheetOptions><x:DisplayGridlines/></x:WorksheetOptions>
-            </x:ExcelWorksheet>
-          </x:ExcelWorksheets>
-        </x:ExcelWorkbook>
-      </xml>
-      <![endif]-->
-      <meta http-equiv="content-type" content="application/vnd.ms-excel; charset=UTF-8">
-      <style>
-        body { font-family: 'Segoe UI', Arial, sans-serif; }
-        .institution-title { font-size: 16pt; font-weight: bold; color: #4A192B; text-align: center; }
-        .department-title { font-size: 12pt; font-weight: bold; color: #FF6B1A; text-align: center; }
-        .report-title { font-size: 13pt; font-weight: bold; text-align: center; padding: 6px; }
-        .meta-line { font-size: 9pt; color: #555; text-align: center; }
-        th { background-color: #4A192B; color: #ffffff; font-weight: bold; padding: 8px; border: 1px solid #35101E; font-size: 10pt; text-transform: uppercase; }
-        td { padding: 6px; border: 1px solid #dcdcdc; font-size: 9pt; }
-        .text-center { text-align: center; }
-        .text-right { text-align: right; }
-        tr:nth-child(even) { background-color: #f9fafb; }
-      </style>
-    </head>
-    <body>
-      <table>
-        <tr><td colspan="${columns.length}" class="institution-title">${INSTITUTION_HEADER.collegeName}</td></tr>
-        <tr><td colspan="${columns.length}" class="department-title">${INSTITUTION_HEADER.departmentName} (${INSTITUTION_HEADER.departmentAbbr})</td></tr>
-        <tr><td colspan="${columns.length}" class="report-title">${title}</td></tr>
-        <tr><td colspan="${columns.length}" class="meta-line">Generated on: ${currentDate} | Total Records: ${data.length} ${filtersDescription ? '| ' + filtersDescription : ''}</td></tr>
-        <tr><td colspan="${columns.length}"></td></tr>
-        <thead>
-          <tr>
-            ${columns.map(col => `<th>${col.header}</th>`).join('')}
-          </tr>
-        </thead>
-        <tbody>
-          ${data.map(row => `
-            <tr>
-              ${columns.map(col => {
-                const val = typeof col.accessor === 'function' ? col.accessor(row) : row[col.accessor];
-                const alignClass = col.align === 'center' ? 'text-center' : col.align === 'right' ? 'text-right' : '';
-                return `<td class="${alignClass}">${val !== undefined && val !== null ? val : '—'}</td>`;
-              }).join('')}
-            </tr>
-          `).join('')}
-        </tbody>
-      </table>
-    </body>
-    </html>
-  `;
+  // 1. Create a real XLSX workbook using SheetJS
+  const wb = XLSX.utils.book_new();
 
-  const blob = new Blob(['\uFEFF' + tableHtml], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;charset=utf-8' });
+  // 2. Build rows with institutional letterhead
+  const wsData = [
+    [INSTITUTION_HEADER.collegeName],
+    [`${INSTITUTION_HEADER.departmentName} (${INSTITUTION_HEADER.departmentAbbr})`],
+    [title.toUpperCase()],
+    [`Generated on: ${currentDate} | Total Records: ${data.length}${filtersDescription ? ' | ' + filtersDescription : ''}`],
+    [], // Blank separator row
+    columns.map(c => c.header), // Table header row
+    ...data.map(row =>
+      columns.map(col => {
+        const val = typeof col.accessor === 'function' ? col.accessor(row) : row[col.accessor];
+        return val !== undefined && val !== null ? val : '—';
+      })
+    )
+  ];
+
+  // 3. Create worksheet from array-of-arrays
+  const ws = XLSX.utils.aoa_to_sheet(wsData);
+
+  // 4. Calculate sensible column widths
+  const colWidths = columns.map(col => {
+    let maxLen = col.header.length;
+    data.forEach(row => {
+      const val = typeof col.accessor === 'function' ? col.accessor(row) : row[col.accessor];
+      const strVal = val !== undefined && val !== null ? String(val) : '';
+      if (strVal.length > maxLen) maxLen = strVal.length;
+    });
+    return { wch: Math.min(Math.max(maxLen + 3, 12), 40) };
+  });
+  ws['!cols'] = colWidths;
+
+  // 5. Append worksheet to workbook
+  const sheetName = cleanFilename.substring(0, 28).replace(/[\\/?*[\]]/g, '') || 'Report';
+  XLSX.utils.book_append_sheet(wb, ws, sheetName);
+
+  // 6. Write workbook as real XLSX binary buffer and trigger actual device download
+  const excelBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+  const blob = new Blob([excelBuffer], {
+    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+  });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = cleanFilename.endsWith('.xlsx') ? cleanFilename : `${cleanFilename}.xlsx`;
+  a.download = finalFilename;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 };
 
 /**
- * Generates an institutional print/PDF report window ready for immediate download/saving as PDF
+ * Generates and downloads a genuine binary PDF file (.pdf) with landscape A4 institutional letterhead
  */
 export const downloadPdfReport = ({ title, filename, filtersDescription, columns, data }) => {
   const currentDate = new Date().toLocaleDateString('en-IN', {
@@ -301,89 +290,121 @@ export const downloadPdfReport = ({ title, filename, filtersDescription, columns
   });
 
   const cleanFilename = sanitizeFilename(filename || 'AIML_Academic_Report');
+  const finalFilename = cleanFilename.endsWith('.pdf') ? cleanFilename : `${cleanFilename}.pdf`;
 
-  const printContent = `
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <meta charset="utf-8">
-      <title>${cleanFilename}</title>
-      <style>
-        @page { size: A4 landscape; margin: 12mm; }
-        body { font-family: 'Segoe UI', Arial, sans-serif; color: #1e293b; margin: 0; padding: 20px; }
-        .header { text-align: center; border-bottom: 2px solid #4A192B; padding-bottom: 12px; margin-bottom: 16px; }
-        .college { font-size: 18px; font-weight: 800; color: #4A192B; text-transform: uppercase; letter-spacing: 0.5px; }
-        .dept { font-size: 13px; font-weight: 700; color: #FF6B1A; margin-top: 4px; }
-        .report-title { font-size: 15px; font-weight: 800; color: #0f172a; margin-top: 8px; text-transform: uppercase; letter-spacing: 0.5px; }
-        .meta { font-size: 10px; color: #64748b; margin-top: 4px; }
-        table { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 11px; }
-        th { background-color: #4A192B; color: #ffffff; padding: 8px 6px; text-align: left; border: 1px solid #35101E; font-weight: 700; font-size: 10px; text-transform: uppercase; }
-        td { padding: 6px; border: 1px solid #cbd5e1; font-size: 10px; }
-        tr:nth-child(even) { background-color: #f8fafc; }
-        .text-center { text-align: center; }
-        .text-right { text-align: right; }
-        .footer { margin-top: 20px; font-size: 9px; color: #94a3b8; display: flex; justify-content: space-between; border-top: 1px solid #e2e8f0; padding-top: 8px; }
-        @media print {
-          body { padding: 0; }
-          .no-print { display: none; }
-        }
-      </style>
-    </head>
-    <body>
-      <div class="header">
-        <div class="college">${INSTITUTION_HEADER.collegeName}</div>
-        <div class="dept">${INSTITUTION_HEADER.departmentName} (${INSTITUTION_HEADER.departmentAbbr})</div>
-        <div class="report-title">${title}</div>
-        <div class="meta">Generated: ${currentDate} | Total Records: ${data.length} ${filtersDescription ? '| ' + filtersDescription : ''}</div>
-      </div>
-      <table>
-        <thead>
-          <tr>
-            ${columns.map(col => `<th class="${col.align === 'center' ? 'text-center' : col.align === 'right' ? 'text-right' : ''}">${col.header}</th>`).join('')}
-          </tr>
-        </thead>
-        <tbody>
-          ${data.map((row) => `
-            <tr>
-              ${columns.map(col => {
-                const val = typeof col.accessor === 'function' ? col.accessor(row) : row[col.accessor];
-                const alignClass = col.align === 'center' ? 'text-center' : col.align === 'right' ? 'text-right' : '';
-                return `<td class="${alignClass}">${val !== undefined && val !== null ? val : '—'}</td>`;
-              }).join('')}
-            </tr>
-          `).join('')}
-        </tbody>
-      </table>
-      <div class="footer">
-        <span>DVR &amp; Dr. HS MIC College of Technology &bull; Confidential Academic Record</span>
-        <span>Department of Artificial Intelligence &amp; Machine Learning</span>
-      </div>
-      <script>
-        window.onload = function() {
-          window.print();
-        };
-      </script>
-    </body>
-    </html>
-  `;
+  // 1. Initialize Landscape A4 jsPDF instance
+  const doc = new jsPDF({
+    orientation: 'landscape',
+    unit: 'mm',
+    format: 'a4'
+  });
 
-  // Attempt popup window first
-  const printWindow = window.open('', '_blank');
-  if (printWindow) {
-    printWindow.document.open();
-    printWindow.document.write(printContent);
-    printWindow.document.close();
-  } else {
-    // Fallback: If popups are blocked by browser/sandbox, download printable report directly
-    const blob = new Blob([printContent], { type: 'text/html;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = cleanFilename.endsWith('.pdf') ? cleanFilename : `${cleanFilename}.pdf`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  }
+  const pageWidth = doc.internal.pageSize.getWidth();
+
+  // 2. Official Institutional Header
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(14);
+  doc.setTextColor(74, 25, 43); // Claret Wine #4A192B
+  doc.text(INSTITUTION_HEADER.collegeName, pageWidth / 2, 14, { align: 'center' });
+
+  doc.setFontSize(10.5);
+  doc.setTextColor(255, 107, 26); // Tangerine Flash #FF6B1A
+  doc.text(`${INSTITUTION_HEADER.departmentName} (${INSTITUTION_HEADER.departmentAbbr})`, pageWidth / 2, 20, { align: 'center' });
+
+  doc.setFontSize(11);
+  doc.setTextColor(15, 23, 42); // Slate 900
+  doc.text(title.toUpperCase(), pageWidth / 2, 27, { align: 'center' });
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8);
+  doc.setTextColor(100, 116, 139); // Slate 500
+  const metaText = `Generated on: ${currentDate} | Total Records: ${data.length}${filtersDescription ? ' | ' + filtersDescription : ''}`;
+  doc.text(metaText, pageWidth / 2, 32, { align: 'center' });
+
+  // Draw separator line below header
+  doc.setDrawColor(74, 25, 43);
+  doc.setLineWidth(0.5);
+  doc.line(14, 34, pageWidth - 14, 34);
+
+  // 3. Format table columns and rows
+  const tableHeaders = columns.map(c => c.header);
+  const tableRows = data.map(row =>
+    columns.map(col => {
+      const val = typeof col.accessor === 'function' ? col.accessor(row) : row[col.accessor];
+      return val !== undefined && val !== null ? String(val) : '—';
+    })
+  );
+
+  // Determine column alignment styles
+  const columnStyles = {};
+  columns.forEach((col, idx) => {
+    if (col.align === 'center') {
+      columnStyles[idx] = { halign: 'center' };
+    } else if (col.align === 'right') {
+      columnStyles[idx] = { halign: 'right' };
+    } else {
+      columnStyles[idx] = { halign: 'left' };
+    }
+  });
+
+  // 4. Generate table using autoTable
+  const runAutoTable = autoTable.default || autoTable;
+  runAutoTable(doc, {
+    head: [tableHeaders],
+    body: tableRows,
+    startY: 37,
+    margin: { left: 14, right: 14, bottom: 15 },
+    theme: 'grid',
+    headStyles: {
+      fillColor: [74, 25, 43], // #4A192B Claret Wine
+      textColor: [255, 255, 255],
+      fontStyle: 'bold',
+      fontSize: 8.5,
+      halign: 'center',
+      cellPadding: 2.5
+    },
+    styles: {
+      font: 'helvetica',
+      fontSize: 8,
+      cellPadding: 2,
+      lineColor: [226, 232, 240],
+      lineWidth: 0.1
+    },
+    alternateRowStyles: {
+      fillColor: [248, 250, 252] // Slate 50
+    },
+    columnStyles,
+    didDrawPage: (dataObj) => {
+      // Institutional Footer on each page
+      const pageCount = doc.internal.getNumberOfPages();
+      const pageHeight = doc.internal.pageSize.getHeight();
+      doc.setFontSize(7.5);
+      doc.setTextColor(148, 163, 184); // Slate 400
+      doc.setFont('helvetica', 'normal');
+
+      doc.text(
+        'DVR & Dr. HS MIC College of Technology • Confidential Academic Record • Department of AIML',
+        14,
+        pageHeight - 8
+      );
+      doc.text(
+        `Page ${dataObj.pageNumber} of ${pageCount}`,
+        pageWidth - 14,
+        pageHeight - 8,
+        { align: 'right' }
+      );
+    }
+  });
+
+  // 5. Trigger direct device download via Blob & ObjectURL
+  const pdfBlob = doc.output('blob');
+  const url = URL.createObjectURL(pdfBlob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = finalFilename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 };
 

@@ -32,7 +32,7 @@ import {
 import BRANDING from '../../config/branding';
 import CollegeLogo from '../../components/CollegeLogo';
 import { useAuth } from '../../context/AuthContext';
-import { getStudentLatestAcademics, ALL_SEMESTER_TERMS } from '../../data/mockData';
+import { getStudentLatestAcademics, ALL_SEMESTER_TERMS, getTermsForYear, YEAR_ALLOWED_TERMS } from '../../data/mockData';
 import { downloadExcelReport, downloadPdfReport, generateReportNaming } from '../../utils/reportExporter';
 import { useTheme } from '../../context/ThemeContext';
 import { THEMES } from '../../config/theme';
@@ -254,9 +254,27 @@ export default function AdminDashboardPage() {
   const [newTargetSem, setNewTargetSem] = useState('3-1');
   const [newInstructions, setNewInstructions] = useState('');
 
+  const handleTargetYearChange = (year) => {
+    setNewTargetYear(year);
+    const allowed = getTermsForYear(year);
+    // Immediately reset previously selected term if it is not valid for the newly selected year
+    if (!allowed.includes(newTargetSem)) {
+      setNewTargetSem(allowed[0] || '');
+    }
+  };
+
   const handleCreateRequestSubmit = (e) => {
     e.preventDefault();
-    if (!newTitle.trim()) return;
+    if (!newTitle.trim()) {
+      alert('Please enter a request title.');
+      return;
+    }
+
+    const allowed = getTermsForYear(newTargetYear);
+    if (!allowed.includes(newTargetSem)) {
+      alert(`Invalid semester/term for ${newTargetYear}. Allowed terms are: ${allowed.join(', ')}`);
+      return;
+    }
 
     const created = createYearSpecificUpdateRequest({
       title: newTitle.trim(),
@@ -269,7 +287,6 @@ export default function AdminDashboardPage() {
     setIsCreateModalOpen(false);
     setNewTitle('');
     setNewInstructions('');
-    alert(`Year-specific update request created for ${newTargetYear} (${newTargetSem}).`);
   };
 
   // ==========================================
@@ -1638,12 +1655,12 @@ export default function AdminDashboardPage() {
                         <select
                           id="req-target-year"
                           value={newTargetYear}
-                          onChange={(e) => setNewTargetYear(e.target.value)}
-                          className="w-full p-2.5 rounded-xl border border-slate-300 bg-white outline-none focus:ring-1 focus:ring-[#4A192B]"
+                          onChange={(e) => handleTargetYearChange(e.target.value)}
+                          className="w-full p-2.5 rounded-xl border border-slate-300 bg-white outline-none focus:ring-1 focus:ring-[#4A192B] font-semibold"
                         >
-                          <option value="2nd Year">2nd Year</option>
-                          <option value="3rd Year">3rd Year</option>
-                          <option value="4th Year">4th Year</option>
+                          <option value="2nd Year">Second Year (2nd Year)</option>
+                          <option value="3rd Year">Third Year (3rd Year)</option>
+                          <option value="4th Year">Fourth Year (4th Year)</option>
                         </select>
                       </div>
 
@@ -1655,14 +1672,13 @@ export default function AdminDashboardPage() {
                           id="req-target-sem"
                           value={newTargetSem}
                           onChange={(e) => setNewTargetSem(e.target.value)}
-                          className="w-full p-2.5 rounded-xl border border-slate-300 bg-white outline-none focus:ring-1 focus:ring-[#4A192B]"
+                          className="w-full p-2.5 rounded-xl border border-slate-300 bg-white outline-none focus:ring-1 focus:ring-[#4A192B] font-semibold"
                         >
-                          <option value="1-2">Semester 1-2 (2nd Yr)</option>
-                          <option value="2-1">Semester 2-1 (2nd Yr)</option>
-                          <option value="2-2">Semester 2-2 (3rd Yr)</option>
-                          <option value="3-1">Semester 3-1 (3rd Yr)</option>
-                          <option value="3-2">Semester 3-2 (4th Yr)</option>
-                          <option value="4-1">Semester 4-1 (4th Yr)</option>
+                          {getTermsForYear(newTargetYear).map((term) => (
+                            <option key={term} value={term}>
+                              Semester {term}
+                            </option>
+                          ))}
                         </select>
                       </div>
                     </div>
