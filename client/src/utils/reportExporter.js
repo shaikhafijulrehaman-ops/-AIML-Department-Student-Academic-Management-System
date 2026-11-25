@@ -234,11 +234,11 @@ export const downloadExcelReport = ({ title, filename, filtersDescription, colum
     [title.toUpperCase()],
     [`Generated on: ${currentDate} | Total Records: ${data.length}${filtersDescription ? ' | ' + filtersDescription : ''}`],
     [], // Blank separator row
-    columns.map(c => c.header), // Table header row
+    columns.map(c => c.header), // Table header row (row index 5)
     ...data.map(row =>
       columns.map(col => {
         const val = typeof col.accessor === 'function' ? col.accessor(row) : row[col.accessor];
-        return val !== undefined && val !== null ? val : '—';
+        return val !== undefined && val !== null ? val : 'Not Provided';
       })
     )
   ];
@@ -251,30 +251,58 @@ export const downloadExcelReport = ({ title, filename, filtersDescription, colum
     let maxLen = col.header.length;
     data.forEach(row => {
       const val = typeof col.accessor === 'function' ? col.accessor(row) : row[col.accessor];
-      const strVal = val !== undefined && val !== null ? String(val) : '';
+      const strVal = val !== undefined && val !== null ? String(val) : 'Not Provided';
       if (strVal.length > maxLen) maxLen = strVal.length;
     });
-    return { wch: Math.min(Math.max(maxLen + 3, 12), 40) };
+    return { wch: Math.min(Math.max(maxLen + 3, 14), 45) };
   });
   ws['!cols'] = colWidths;
 
-  // 5. Append worksheet to workbook
-  const sheetName = cleanFilename.substring(0, 28).replace(/[\\/?*[\]]/g, '') || 'Report';
+  // 5. Enable Auto-filter on the data table header row (row 6, 0-indexed row 5)
+  const lastColLetter = XLSX.utils.encode_col(Math.max(0, columns.length - 1));
+  const startRow = 6; // 1-indexed row 6 is the header row
+  const endRow = Math.max(startRow, 6 + data.length);
+  ws['!autofilter'] = { ref: `A${startRow}:${lastColLetter}${endRow}` };
+
+  // 6. Freeze panes below the header row so headers stay visible on scrolling
+  ws['!views'] = [
+    {
+      state: 'frozen',
+      ySplit: 6, // Freeze rows 1 through 6
+      topLeftCell: 'A7',
+      activeCell: 'A7'
+    }
+  ];
+
+  // 7. Clean sheet name: max 31 chars, no illegal characters: \ / ? * : [ ]
+  let sheetName = cleanFilename.replace(/[:\\/?*\[\]]/g, '').trim().substring(0, 31) || 'Report';
   XLSX.utils.book_append_sheet(wb, ws, sheetName);
 
-  // 6. Write workbook as real XLSX binary buffer and trigger actual device download
+  // 8. Serialize workbook using XLSX format to Uint8Array buffer
   const excelBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
-  const blob = new Blob([excelBuffer], {
+  const uint8Buffer = new Uint8Array(excelBuffer);
+
+  // 9. Create Blob with strict OpenXML Spreadsheet MIME type
+  const blob = new Blob([uint8Buffer], {
     type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
   });
+
+  // 10. Trigger dependable browser download with safe URL lifecycle
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
+  a.style.display = 'none';
   a.href = url;
   a.download = finalFilename;
   document.body.appendChild(a);
   a.click();
-  document.body.removeChild(a);
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
+
+  // Generous timeout before revoking object URL to ensure browser has completed file retrieval
+  setTimeout(() => {
+    if (a.parentNode) {
+      document.body.removeChild(a);
+    }
+    URL.revokeObjectURL(url);
+  }, 10000);
 };
 
 /**
