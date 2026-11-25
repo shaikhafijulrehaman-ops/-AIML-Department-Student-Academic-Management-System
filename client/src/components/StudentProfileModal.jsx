@@ -46,11 +46,14 @@ export default function StudentProfileModal({ student, isOpen, onClose, latestAc
 
   if (!isOpen || !student) return null;
 
-  const maxCompletedSem = getMaxCompletedSemForTerm(student.term);
+  const isPending = student.onboardingStatus === 'Profile Pending';
+  const maxCompletedSem = student.term && student.term !== 'Not Provided' 
+    ? getMaxCompletedSemForTerm(student.term) 
+    : 0;
 
   // Determine semester records status
   const semesterTableData = ALL_SEMESTER_TERMS.map((item) => {
-    const isEligible = item.semNumber <= maxCompletedSem;
+    const isEligible = !isPending && maxCompletedSem > 0 && item.semNumber <= maxCompletedSem;
     const rec = (student.semesterRecords || []).find((r) => r.term === item.term);
     const hasCgpa = rec && rec.cgpa !== null && rec.cgpa !== undefined;
 
@@ -58,7 +61,11 @@ export default function StudentProfileModal({ student, isOpen, onClose, latestAc
     let statusBadgeClass = 'bg-slate-100 text-slate-500 border-slate-200';
     let displayCgpa = '—';
 
-    if (isEligible) {
+    if (isPending) {
+      updateStatus = 'Profile Pending';
+      statusBadgeClass = 'bg-amber-50 text-amber-800 border-amber-200';
+      displayCgpa = 'Not Provided';
+    } else if (isEligible) {
       if (hasCgpa && (rec.status === 'Updated' || rec.cgpa > 0)) {
         updateStatus = 'Updated';
         statusBadgeClass = 'bg-emerald-50 text-emerald-800 border-emerald-300 font-bold';
@@ -168,7 +175,7 @@ export default function StudentProfileModal({ student, isOpen, onClose, latestAc
                   )}
                 </div>
                 <div className="absolute -bottom-2 -right-2 px-2 py-0.5 rounded-md bg-[#FF6B1A] text-white font-mono font-bold text-[10px] shadow-xs">
-                  {student.term}
+                  {student.term && student.term !== 'Not Provided' ? student.term : 'Pending'}
                 </div>
               </div>
 
@@ -176,19 +183,23 @@ export default function StudentProfileModal({ student, isOpen, onClose, latestAc
               <div className="text-center sm:text-left flex-1 min-w-0 space-y-2">
                 <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2">
                   <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-[#4A192B]/10 text-[#4A192B]">
-                    {student.year}
+                    {student.year && student.year !== 'Not Provided' ? student.year : 'Year: Not Provided'}
                   </span>
                   <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-700 font-mono">
-                    Term {student.term}
+                    {student.term && student.term !== 'Not Provided' ? `Term ${student.term}` : 'Term: Not Provided'}
                   </span>
-                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 flex items-center gap-1">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-600"></span>
-                    <span>{student.studentStatus || 'Active Student'}</span>
+                  <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold flex items-center gap-1 ${
+                    isPending ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'
+                  }`}>
+                    <span className={`w-1.5 h-1.5 rounded-full ${isPending ? 'bg-amber-600' : 'bg-emerald-600'}`}></span>
+                    <span>{isPending ? 'Profile Pending' : (student.studentStatus || 'Active Student')}</span>
                   </span>
                 </div>
 
                 <h3 className="text-xl sm:text-2xl font-black text-slate-900 leading-tight">
-                  {student.name}
+                  {isPending && (!student.name || student.name === 'Profile Pending') 
+                    ? 'Profile Pending' 
+                    : student.name}
                 </h3>
 
                 <div className="flex flex-wrap items-center justify-center sm:justify-start gap-3 text-xs">
@@ -208,6 +219,19 @@ export default function StudentProfileModal({ student, isOpen, onClose, latestAc
               </div>
             </div>
           </section>
+
+          {/* Pending Onboarding Informational Alert */}
+          {isPending && (
+            <div className="p-3.5 rounded-2xl bg-amber-50 border border-amber-300 text-amber-950 text-xs flex items-start gap-2.5 shadow-xs">
+              <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+              <div className="space-y-0.5">
+                <p className="font-bold">Student Profile Pending Onboarding</p>
+                <p className="text-[11px] text-amber-800">
+                  This account was created by HOD. The student has not completed their profile yet. All missing details are displayed as "Not Provided".
+                </p>
+              </div>
+            </div>
+          )}
 
           {/* SECTION 2 & 3: PERSONAL INFORMATION & PREVIOUS ACADEMICS GRID */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">

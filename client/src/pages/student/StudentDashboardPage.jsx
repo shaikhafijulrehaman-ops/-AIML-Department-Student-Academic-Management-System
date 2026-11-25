@@ -31,6 +31,8 @@ import { useAuth } from '../../context/AuthContext';
 import { getMaxCompletedSemForTerm, getStudentLatestAcademics, ALL_SEMESTER_TERMS, getTermsForYear, YEAR_ALLOWED_TERMS } from '../../data/mockData';
 import { useTheme } from '../../context/ThemeContext';
 import { THEMES } from '../../config/theme';
+import StudentChangePasswordView from '../../components/StudentChangePasswordView';
+import StudentCompleteProfileView from '../../components/StudentCompleteProfileView';
 
 export default function StudentDashboardPage() {
   const navigate = useNavigate();
@@ -45,7 +47,9 @@ export default function StudentDashboardPage() {
     updateStudentProfile,
     updateStudentAcademicDetails,
     updateRequests,
-    isStudentSubmittedForRequest
+    isStudentSubmittedForRequest,
+    changeStudentPassword,
+    completeStudentOnboarding
   } = useAuth();
 
   // Student Navigation strictly limited to the 4 required sections:
@@ -75,16 +79,16 @@ export default function StudentDashboardPage() {
   // Reset form whenever active student changes
   useEffect(() => {
     setProfileForm({
-      name: activeStudent.name,
-      registerNumber: activeStudent.registerNumber,
-      email: activeStudent.email,
-      phone: activeStudent.phone,
-      location: activeStudent.location,
-      year: activeStudent.year,
-      term: activeStudent.term,
-      profilePhoto: activeStudent.profilePhoto,
+      name: activeStudent?.name || '',
+      registerNumber: activeStudent?.registerNumber || '',
+      email: activeStudent?.email || '',
+      phone: activeStudent?.phone || '',
+      location: activeStudent?.location || '',
+      year: activeStudent?.year || '',
+      term: activeStudent?.term || '',
+      profilePhoto: activeStudent?.profilePhoto || '',
     });
-    setPhotoPreview(activeStudent.profilePhoto);
+    setPhotoPreview(activeStudent?.profilePhoto || null);
     setIsProfileDirty(false);
   }, [activeStudent]);
 
@@ -212,6 +216,45 @@ export default function StudentDashboardPage() {
     logout();
     navigate('/student/login');
   };
+
+  // ==========================================
+  // ONBOARDING WORKFLOW GUARDS
+  // 1. Mandatory First-Login Password Change
+  // 2. Mandatory Student Profile Completion
+  // ==========================================
+  if (activeStudent?.mustChangePassword) {
+    return (
+      <StudentChangePasswordView
+        student={activeStudent}
+        onPasswordChanged={(newPassword) => {
+          const res = changeStudentPassword(activeStudent.id, newPassword);
+          if (res?.success) {
+            setToastMessage('Password updated successfully! Please now complete your student profile.');
+            setTimeout(() => setToastMessage(null), 4000);
+          }
+          return res;
+        }}
+        onLogout={handleLogout}
+      />
+    );
+  }
+
+  if (activeStudent?.onboardingStatus === 'Profile Pending') {
+    return (
+      <StudentCompleteProfileView
+        student={activeStudent}
+        onCompleteProfile={(profileData) => {
+          const res = completeStudentOnboarding(activeStudent.id, profileData);
+          if (res?.success) {
+            setToastMessage('Welcome! Your profile has been completed and saved successfully.');
+            setTimeout(() => setToastMessage(null), 5000);
+          }
+          return res;
+        }}
+        onLogout={handleLogout}
+      />
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[#E8E0CF] text-[#1F2926] flex flex-col font-sans antialiased pb-12 md:pb-0 w-full max-w-full overflow-x-hidden">

@@ -29,11 +29,13 @@ import {
   MapPin,
   Download,
   Eye,
-  User
+  User,
+  UserPlus
 } from 'lucide-react';
 import BRANDING from '../../config/branding';
 import CollegeLogo from '../../components/CollegeLogo';
 import StudentProfileModal from '../../components/StudentProfileModal';
+import CreateStudentModal from '../../components/CreateStudentModal';
 import { useAuth } from '../../context/AuthContext';
 import { getStudentLatestAcademics, ALL_SEMESTER_TERMS, getTermsForYear, YEAR_ALLOWED_TERMS } from '../../data/mockData';
 import { downloadExcelReport, downloadPdfReport, generateReportNaming } from '../../utils/reportExporter';
@@ -52,6 +54,7 @@ export default function AdminDashboardPage() {
     logout,
     students,
     updateRequests,
+    createStudentAccount,
     createYearSpecificUpdateRequest,
     isStudentSubmittedForRequest
   } = useAuth();
@@ -72,6 +75,11 @@ export default function AdminDashboardPage() {
   const [filterYear, setFilterYear] = useState('All');
   const [filterSemester, setFilterSemester] = useState('All');
   const [filterLocation, setFilterLocation] = useState('All');
+  const [filterOnboardingStatus, setFilterOnboardingStatus] = useState('All'); // 'All' | 'Profile Completed' | 'Profile Pending' | 'Inactive'
+
+  // Modal: Add Student Account
+  const [isAddStudentOpen, setIsAddStudentOpen] = useState(false);
+  const [toastMessage, setToastMessage] = useState(null);
 
   // Comparison filters (Evaluates SSC %, Inter/Diploma %, and CGPA)
   const [sscOp, setSscOp] = useState('all');
@@ -92,6 +100,7 @@ export default function AdminDashboardPage() {
     year: 'All',
     semester: 'All',
     location: 'All',
+    status: 'All',
     ssc: { op: 'all', v1: '', v2: '' },
     inter: { op: 'all', v1: '', v2: '' },
     cgpa: { op: 'all', v1: '', v2: '' },
@@ -105,11 +114,21 @@ export default function AdminDashboardPage() {
     if (appliedFilters.year !== 'All') count++;
     if (appliedFilters.semester !== 'All') count++;
     if (appliedFilters.location !== 'All') count++;
+    if (appliedFilters.status !== 'All') count++;
     if (appliedFilters.ssc.op !== 'all') count++;
     if (appliedFilters.inter.op !== 'all') count++;
     if (appliedFilters.cgpa.op !== 'all') count++;
     return count;
   }, [appliedFilters]);
+
+  // Summary counts for Onboarding Status (calculated dynamically from actual records)
+  const onboardingStats = useMemo(() => {
+    const total = students.length;
+    const completed = students.filter((s) => s.onboardingStatus === 'Profile Completed').length;
+    const pending = students.filter((s) => s.onboardingStatus === 'Profile Pending').length;
+    const inactive = students.filter((s) => s.onboardingStatus === 'Inactive').length;
+    return { total, completed, pending, inactive };
+  }, [students]);
 
   const handleApplyFilters = () => {
     setAppliedFilters({
@@ -118,6 +137,7 @@ export default function AdminDashboardPage() {
       year: filterYear,
       semester: filterSemester,
       location: filterLocation,
+      status: filterOnboardingStatus,
       ssc: { op: sscOp, v1: sscVal1, v2: sscVal2 },
       inter: { op: interOp, v1: interVal1, v2: interVal2 },
       cgpa: { op: cgpaOp, v1: cgpaVal1, v2: cgpaVal2 },
@@ -148,6 +168,7 @@ export default function AdminDashboardPage() {
     setFilterYear('All');
     setFilterSemester('All');
     setFilterLocation('All');
+    setFilterOnboardingStatus('All');
     setSscOp('all'); setSscVal1(''); setSscVal2('');
     setInterOp('all'); setInterVal1(''); setInterVal2('');
     setCgpaOp('all'); setCgpaVal1(''); setCgpaVal2('');
@@ -158,10 +179,19 @@ export default function AdminDashboardPage() {
       year: 'All',
       semester: 'All',
       location: 'All',
+      status: 'All',
       ssc: { op: 'all', v1: '', v2: '' },
       inter: { op: 'all', v1: '', v2: '' },
       cgpa: { op: 'all', v1: '', v2: '' },
     });
+  };
+
+  const handleQuickStatusFilter = (status) => {
+    setFilterOnboardingStatus(status);
+    setAppliedFilters((prev) => ({
+      ...prev,
+      status,
+    }));
   };
 
   const evalComp = (val, op, v1, v2) => {
@@ -205,6 +235,14 @@ export default function AdminDashboardPage() {
       }
       if (appliedFilters.name && !s.name.toLowerCase().includes(appliedFilters.name.toLowerCase())) {
         return false;
+      }
+
+      // Onboarding Status Filter
+      if (appliedFilters.status !== 'All') {
+        const studentStatus = s.onboardingStatus || (s.name && s.year !== 'Not Provided' ? 'Profile Completed' : 'Profile Pending');
+        if (studentStatus !== appliedFilters.status) {
+          return false;
+        }
       }
 
       // Multi-Parameter Filters
@@ -850,9 +888,97 @@ export default function AdminDashboardPage() {
         {/* ============================================================== */}
         {activeTab === 'directory' && (
           <div className="space-y-4 sm:space-y-6">
-            {/* DEDICATED QUICK SEARCH BAR: Register Number & Student Name */}
+            {/* Feedback Toast */}
+            {toastMessage && (
+              <div className="p-3.5 rounded-2xl bg-emerald-50 border border-emerald-300 text-emerald-900 text-xs font-semibold flex items-center justify-between shadow-xs animate-in fade-in">
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span>{toastMessage}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setToastMessage(null)}
+                  className="text-emerald-700 hover:text-emerald-900 cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            )}
+
+            {/* ONBOARDING STATUS SUMMARY CARDS */}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+              {/* 1. Total Student Accounts */}
+              <div 
+                onClick={() => handleQuickStatusFilter('All')}
+                className={`p-4 rounded-3xl bg-white border transition-all cursor-pointer shadow-xs hover:shadow-md ${
+                  appliedFilters.status === 'All' ? 'border-[#4A192B] ring-1 ring-[#4A192B]' : 'border-[#C1C8B7]'
+                }`}
+              >
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                    Total Accounts
+                  </span>
+                  <Users className="w-4 h-4 text-[#4A192B]" />
+                </div>
+                <div className="text-2xl font-black text-[#4A192B]">{onboardingStats.total}</div>
+                <span className="text-[10px] text-slate-500 block">Department Database</span>
+              </div>
+
+              {/* 2. Profiles Completed */}
+              <div 
+                onClick={() => handleQuickStatusFilter('Profile Completed')}
+                className={`p-4 rounded-3xl bg-white border transition-all cursor-pointer shadow-xs hover:shadow-md ${
+                  appliedFilters.status === 'Profile Completed' ? 'border-emerald-600 ring-1 ring-emerald-600' : 'border-[#C1C8B7]'
+                }`}
+              >
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-[10px] font-bold text-emerald-700 uppercase tracking-wider">
+                    Profiles Completed
+                  </span>
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                </div>
+                <div className="text-2xl font-black text-emerald-800">{onboardingStats.completed}</div>
+                <span className="text-[10px] text-emerald-600 block">Active &amp; Verified</span>
+              </div>
+
+              {/* 3. Profiles Pending */}
+              <div 
+                onClick={() => handleQuickStatusFilter('Profile Pending')}
+                className={`p-4 rounded-3xl bg-white border transition-all cursor-pointer shadow-xs hover:shadow-md ${
+                  appliedFilters.status === 'Profile Pending' ? 'border-amber-500 ring-1 ring-amber-500' : 'border-[#C1C8B7]'
+                }`}
+              >
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-[10px] font-bold text-amber-700 uppercase tracking-wider">
+                    Profiles Pending
+                  </span>
+                  <Clock className="w-4 h-4 text-amber-600" />
+                </div>
+                <div className="text-2xl font-black text-amber-800">{onboardingStats.pending}</div>
+                <span className="text-[10px] text-amber-600 block">Awaiting First Login</span>
+              </div>
+
+              {/* 4. Inactive Accounts */}
+              <div 
+                onClick={() => handleQuickStatusFilter('Inactive')}
+                className={`p-4 rounded-3xl bg-white border transition-all cursor-pointer shadow-xs hover:shadow-md ${
+                  appliedFilters.status === 'Inactive' ? 'border-slate-500 ring-1 ring-slate-500' : 'border-[#C1C8B7]'
+                }`}
+              >
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                    Inactive Accounts
+                  </span>
+                  <AlertCircle className="w-4 h-4 text-slate-400" />
+                </div>
+                <div className="text-2xl font-black text-slate-700">{onboardingStats.inactive}</div>
+                <span className="text-[10px] text-slate-500 block">Disabled Accounts</span>
+              </div>
+            </div>
+
+            {/* DEDICATED QUICK SEARCH BAR + ADD STUDENT BUTTON */}
             <section aria-label="Student Directory Search" className="bg-white rounded-3xl p-4 sm:p-5 border border-[#C1C8B7] shadow-sm space-y-3">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div className="flex items-center gap-2">
                   <div className="w-8 h-8 rounded-xl bg-[#4A192B]/10 text-[#4A192B] flex items-center justify-center shrink-0">
                     <Search className="w-4 h-4 text-[#FF6B1A]" />
@@ -867,25 +993,36 @@ export default function AdminDashboardPage() {
                   </div>
                 </div>
 
-                {/* Clear search & Mobile filter toggle */}
-                <div className="flex items-center gap-2">
-                  {(searchRegNo || searchName) && (
+                {/* Top Action Bar: Add Student + Clear search + Filter toggle */}
+                <div className="flex flex-wrap items-center gap-2">
+                  {/* PROMINENT ADD STUDENT BUTTON */}
+                  <button
+                    type="button"
+                    onClick={() => setIsAddStudentOpen(true)}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[#4A192B] hover:bg-[#35101E] active:scale-95 text-white text-xs font-bold shadow-sm transition-all cursor-pointer shrink-0"
+                  >
+                    <UserPlus className="w-4 h-4 text-[#FF6B1A]" />
+                    <span>+ Add Student</span>
+                  </button>
+
+                  {(searchRegNo || searchName || appliedFilters.status !== 'All') && (
                     <button
                       type="button"
                       onClick={handleClearSearch}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition-all cursor-pointer"
+                      className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition-all cursor-pointer"
                     >
                       <RotateCcw className="w-3.5 h-3.5 text-[#FF6B1A]" />
-                      <span>Clear Search</span>
+                      <span>Reset</span>
                     </button>
                   )}
+
                   <button
                     type="button"
                     onClick={() => setIsMobileFilterOpen(!isMobileFilterOpen)}
-                    className="md:hidden inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold cursor-pointer"
+                    className="md:hidden inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold cursor-pointer"
                   >
                     <SlidersHorizontal className="w-3.5 h-3.5 text-[#FF6B1A]" />
-                    <span>{isMobileFilterOpen ? 'Hide Filters' : 'More Filters'}</span>
+                    <span>{isMobileFilterOpen ? 'Hide' : 'Filter'}</span>
                     {activeFilterCount > 0 && (
                       <span className="px-1.5 py-0.2 rounded-full bg-[#4A192B] text-white text-[9px] font-bold">
                         {activeFilterCount}
@@ -1021,7 +1158,7 @@ export default function AdminDashboardPage() {
               </div>
 
               {/* Filters Grid */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 text-xs">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3 text-xs">
                 {/* Search by Name */}
                 <div>
                   <label className="block font-bold text-slate-700 mb-1">
@@ -1054,6 +1191,24 @@ export default function AdminDashboardPage() {
                     />
                     <Search className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-3 pointer-events-none" />
                   </div>
+                </div>
+
+                {/* Filter by Profile Status */}
+                <div>
+                  <label htmlFor="filter-onboarding-status" className="block font-bold text-slate-700 mb-1">
+                    Profile Status
+                  </label>
+                  <select
+                    id="filter-onboarding-status"
+                    value={filterOnboardingStatus}
+                    onChange={(e) => setFilterOnboardingStatus(e.target.value)}
+                    className="w-full p-2 rounded-xl border border-slate-300 bg-white text-slate-800 outline-none focus:ring-1 focus:ring-[#4A192B]"
+                  >
+                    <option value="All">All Statuses</option>
+                    <option value="Profile Completed">Profile Completed</option>
+                    <option value="Profile Pending">Profile Pending</option>
+                    <option value="Inactive">Inactive</option>
+                  </select>
                 </div>
 
                 {/* Filter by Academic Year */}
@@ -1246,7 +1401,7 @@ export default function AdminDashboardPage() {
                 </div>
               </div>
 
-              {/* DESKTOP VIEW: Full 11 Columns Table (with Action View Button) (hidden md:block) */}
+              {/* DESKTOP VIEW: Full 12 Columns Table (with Action View Button & Status) (hidden md:block) */}
               <div className="hidden md:block overflow-x-auto">
                 <table className="w-full text-left text-xs border-collapse">
                   <thead>
@@ -1254,6 +1409,7 @@ export default function AdminDashboardPage() {
                       <th className="py-3 px-3 font-bold">Photo</th>
                       <th className="py-3 px-3 font-bold">Student Name</th>
                       <th className="py-3 px-3 font-bold">Register Number</th>
+                      <th className="py-3 px-3 font-bold text-center">Profile Status</th>
                       <th className="py-3 px-3 font-bold">Location</th>
                       <th className="py-3 px-2 font-bold">Year</th>
                       <th className="py-3 px-2 font-bold">Current Term</th>
@@ -1267,7 +1423,7 @@ export default function AdminDashboardPage() {
                   <tbody className="divide-y divide-slate-100 text-slate-800">
                     {filteredStudents.length === 0 ? (
                       <tr>
-                        <td colSpan="11" className="py-12 px-4 text-center">
+                        <td colSpan="12" className="py-12 px-4 text-center">
                           <div className="w-12 h-12 rounded-full bg-slate-100 text-slate-400 mx-auto flex items-center justify-center mb-3">
                             <Search className="w-6 h-6" />
                           </div>
@@ -1288,6 +1444,7 @@ export default function AdminDashboardPage() {
                     ) : (
                       filteredStudents.map((std) => {
                         const latest = getStudentLatestAcademics(std);
+                        const isPending = std.onboardingStatus === 'Profile Pending';
                         return (
                           <tr key={std.id} className="hover:bg-slate-50 transition-colors">
                             {/* 1. Photo */}
@@ -1296,14 +1453,18 @@ export default function AdminDashboardPage() {
                                 {std.profilePhoto ? (
                                   <img src={std.profilePhoto} alt={std.name} className="w-full h-full object-cover" />
                                 ) : (
-                                  <span>{std.name.substring(0, 2).toUpperCase()}</span>
+                                  <span>{(std.name && std.name !== 'Profile Pending' ? std.name.substring(0, 2) : 'SP').toUpperCase()}</span>
                                 )}
                               </div>
                             </td>
 
                             {/* 2. Name */}
                             <td className="py-2.5 px-3 font-semibold text-slate-900">
-                              {std.name}
+                              {isPending && (!std.name || std.name === 'Profile Pending') ? (
+                                <span className="text-amber-800 font-normal italic">Profile Pending</span>
+                              ) : (
+                                std.name
+                              )}
                             </td>
 
                             {/* 3. Register Number */}
@@ -1311,45 +1472,76 @@ export default function AdminDashboardPage() {
                               {std.registerNumber}
                             </td>
 
-                            {/* 4. Location */}
+                            {/* 4. Profile Status */}
+                            <td className="py-2.5 px-3 text-center">
+                              {isPending ? (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-300">
+                                  <Clock className="w-3 h-3 text-amber-600" />
+                                  <span>Profile Pending</span>
+                                </span>
+                              ) : std.onboardingStatus === 'Inactive' ? (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-600 border border-slate-300">
+                                  <span>Inactive</span>
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
+                                  <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                                  <span>Profile Completed</span>
+                                </span>
+                              )}
+                            </td>
+
+                            {/* 5. Location */}
                             <td className="py-2.5 px-3 text-slate-600">
-                              {std.location}
+                              {std.location && std.location !== 'Not Provided' ? std.location : '—'}
                             </td>
 
-                            {/* 5. Year */}
+                            {/* 6. Year */}
                             <td className="py-2.5 px-2">
-                              <span className="font-semibold text-slate-700">{std.year}</span>
-                            </td>
-
-                            {/* 6. Current Term */}
-                            <td className="py-2.5 px-2 font-mono font-bold text-slate-800">
-                              <span className="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200">
-                                {std.term}
+                              <span className="font-semibold text-slate-700">
+                                {std.year && std.year !== 'Not Provided' ? std.year : '—'}
                               </span>
                             </td>
 
-                            {/* 7. SSC % */}
+                            {/* 7. Current Term */}
+                            <td className="py-2.5 px-2 font-mono font-bold text-slate-800">
+                              {std.term && std.term !== 'Not Provided' ? (
+                                <span className="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200">
+                                  {std.term}
+                                </span>
+                              ) : (
+                                <span className="text-slate-400 font-normal">—</span>
+                              )}
+                            </td>
+
+                            {/* 8. SSC % */}
                             <td className="py-2.5 px-3 text-center font-semibold">
-                              {std.sscPercentage}%
+                              {std.sscPercentage !== null && std.sscPercentage !== undefined ? `${std.sscPercentage}%` : '—'}
                             </td>
 
-                            {/* 8. Inter / Diploma % */}
+                            {/* 9. Inter / Diploma % */}
                             <td className="py-2.5 px-3 text-center">
-                              <span className="font-semibold">{std.interPercentage}%</span>
-                              <span className="block text-[10px] text-slate-400">({std.interType})</span>
+                              {std.interPercentage !== null && std.interPercentage !== undefined ? (
+                                <>
+                                  <span className="font-semibold">{std.interPercentage}%</span>
+                                  <span className="block text-[10px] text-slate-400">({std.interType || 'Inter'})</span>
+                                </>
+                              ) : (
+                                <span className="text-slate-400">—</span>
+                              )}
                             </td>
 
-                            {/* 9. Latest Sem */}
+                            {/* 10. Latest Sem */}
                             <td className="py-2.5 px-2 text-center font-bold text-[#4A192B]">
-                              {latest.latestSemester}
+                              {latest.latestSemester && latest.latestSemester !== '—' ? latest.latestSemester : '—'}
                             </td>
 
-                            {/* 10. Latest CGPA */}
+                            {/* 11. Latest CGPA */}
                             <td className="py-2.5 px-3 text-center font-bold text-emerald-700">
                               {latest.latestCgpa !== null ? latest.latestCgpa.toFixed(2) : '—'}
                             </td>
 
-                            {/* 11. View Action Button */}
+                            {/* 12. View Action Button */}
                             <td className="py-2.5 px-3 text-center">
                               <button
                                 type="button"
@@ -1394,32 +1586,45 @@ export default function AdminDashboardPage() {
                 ) : (
                   filteredStudents.map((std) => {
                     const latest = getStudentLatestAcademics(std);
+                    const isPending = std.onboardingStatus === 'Profile Pending';
                     return (
                       <div
                         key={std.id}
                         className="bg-white rounded-2xl p-4 border border-[#C1C8B7]/80 shadow-xs space-y-3"
                       >
-                        {/* Top: Photo, Name, RegNo & Year Badge */}
+                        {/* Top: Photo, Name, RegNo & Year / Status Badge */}
                         <div className="flex items-start justify-between gap-3">
                           <div className="flex items-center gap-3">
                             <div className="w-10 h-10 rounded-full overflow-hidden bg-slate-100 border border-slate-300 flex items-center justify-center text-slate-600 font-bold text-xs flex-shrink-0">
                               {std.profilePhoto ? (
                                 <img src={std.profilePhoto} alt={std.name} className="w-full h-full object-cover" />
                               ) : (
-                                <span>{std.name.substring(0, 2).toUpperCase()}</span>
+                                <span>{(std.name && std.name !== 'Profile Pending' ? std.name.substring(0, 2) : 'SP').toUpperCase()}</span>
                               )}
                             </div>
                             <div>
-                              <h4 className="font-bold text-slate-900 text-xs leading-tight">{std.name}</h4>
+                              <h4 className="font-bold text-slate-900 text-xs leading-tight">
+                                {isPending && (!std.name || std.name === 'Profile Pending') ? (
+                                  <span className="text-amber-800 italic font-normal">Profile Pending</span>
+                                ) : (
+                                  std.name
+                                )}
+                              </h4>
                               <span className="font-mono font-bold text-xs text-[#4A192B] block">{std.registerNumber}</span>
                             </div>
                           </div>
                           <div className="flex flex-col items-end gap-1">
-                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#4A192B]/10 text-[#4A192B]">
-                              {std.year}
-                            </span>
+                            {isPending ? (
+                              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-300">
+                                Profile Pending
+                              </span>
+                            ) : (
+                              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
+                                Profile Completed
+                              </span>
+                            )}
                             <span className="px-1.5 py-0.5 rounded bg-slate-100 font-mono text-[10px] font-bold text-slate-700">
-                              Term {std.term}
+                              {std.term && std.term !== 'Not Provided' ? `Term ${std.term}` : 'Pending'}
                             </span>
                           </div>
                         </div>
@@ -1428,7 +1633,9 @@ export default function AdminDashboardPage() {
                         <div className="grid grid-cols-2 gap-2 text-[11px] pt-2 border-t border-slate-100">
                           <div className="p-2 rounded-xl bg-slate-50 border border-slate-200">
                             <span className="text-slate-400 block text-[9px] uppercase font-bold">Latest Completed</span>
-                            <span className="font-bold text-slate-800">Sem {latest.latestSemester}</span>
+                            <span className="font-bold text-slate-800">
+                              {latest.latestSemester && latest.latestSemester !== '—' ? `Sem ${latest.latestSemester}` : 'Not Provided'}
+                            </span>
                           </div>
                           <div className="p-2 rounded-xl bg-emerald-50 border border-emerald-200">
                             <span className="text-emerald-700 block text-[9px] uppercase font-bold">Latest CGPA</span>
@@ -1438,14 +1645,18 @@ export default function AdminDashboardPage() {
                           </div>
                           <div className="p-2 rounded-xl bg-slate-50 border border-slate-200">
                             <span className="text-slate-400 block text-[9px] uppercase font-bold">Prior Education</span>
-                            <span className="font-bold text-slate-800">SSC: {std.sscPercentage}%</span>
-                            <span className="block text-[10px] text-slate-500">{std.interType}: {std.interPercentage}%</span>
+                            <span className="font-bold text-slate-800">
+                              {std.sscPercentage !== null ? `SSC: ${std.sscPercentage}%` : 'SSC: Not Provided'}
+                            </span>
+                            <span className="block text-[10px] text-slate-500">
+                              {std.interPercentage !== null ? `${std.interType || 'Inter'}: ${std.interPercentage}%` : 'Inter: Not Provided'}
+                            </span>
                           </div>
                           <div className="p-2 rounded-xl bg-slate-50 border border-slate-200">
                             <span className="text-slate-400 block text-[9px] uppercase font-bold">Location</span>
                             <span className="font-bold text-slate-800 truncate block flex items-center gap-1">
                               <MapPin className="w-3 h-3 text-slate-400" />
-                              <span>{std.location}</span>
+                              <span>{std.location && std.location !== 'Not Provided' ? std.location : 'Not Provided'}</span>
                             </span>
                           </div>
                         </div>
@@ -2137,6 +2348,20 @@ export default function AdminDashboardPage() {
         isOpen={Boolean(selectedStudentForModal)}
         onClose={() => setViewingStudentId(null)}
         latestAcademics={selectedStudentForModal ? getStudentLatestAcademics(selectedStudentForModal) : null}
+      />
+
+      {/* Add Student Account Modal (HOD Only - 2 Fields: Reg No & Initial Password) */}
+      <CreateStudentModal
+        isOpen={isAddStudentOpen}
+        onClose={() => setIsAddStudentOpen(false)}
+        onCreateStudent={({ registerNumber, initialPassword }) => {
+          const res = createStudentAccount({ registerNumber, initialPassword });
+          if (res.success) {
+            setToastMessage(`Student account "${registerNumber}" created successfully (Profile Pending).`);
+            setTimeout(() => setToastMessage(null), 5000);
+          }
+          return res;
+        }}
       />
 
       {/* Footer */}

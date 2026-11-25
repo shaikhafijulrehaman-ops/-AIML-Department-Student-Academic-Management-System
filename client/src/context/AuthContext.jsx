@@ -36,13 +36,22 @@ const sanitizeRequestsList = (list) => {
 
 const sanitizeStudentsList = (list) => {
   if (!Array.isArray(list)) return [];
-  return list.map(s => ({
-    ...s,
-    semesterRecords: (s.semesterRecords || []).map(r => {
-      const { sgpa, ...cleanRecord } = r;
-      return cleanRecord;
-    })
-  }));
+  return list.map(s => {
+    const isCompleted = s.onboardingStatus === 'Profile Completed' || 
+      (s.name && s.name !== 'Profile Pending' && s.year && s.year !== 'Not Provided');
+    
+    return {
+      ...s,
+      onboardingStatus: s.onboardingStatus || (isCompleted ? 'Profile Completed' : 'Profile Pending'),
+      mustChangePassword: Boolean(s.mustChangePassword),
+      studentStatus: s.studentStatus || (isCompleted ? 'Active' : 'Profile Pending'),
+      password: s.password || 'student123',
+      semesterRecords: (s.semesterRecords || []).map(r => {
+        const { sgpa, ...cleanRecord } = r;
+        return cleanRecord;
+      })
+    };
+  });
 };
 
 export const AuthProvider = ({ children }) => {
@@ -130,16 +139,123 @@ export const AuthProvider = ({ children }) => {
     if (!registerNumber || !password) {
       return { success: false, error: 'Please enter Register Number and Password.' };
     }
+    const cleanRegNo = registerNumber.trim().toUpperCase();
     const matched = students.find(
-      (s) => s.registerNumber.trim().toUpperCase() === registerNumber.trim().toUpperCase()
+      (s) => s.registerNumber.trim().toUpperCase() === cleanRegNo
     );
-    const target = matched || students[0];
+
+    if (!matched) {
+      return { success: false, error: 'No student account found with this Register Number.' };
+    }
+
+    const expectedPassword = matched.password || 'student123';
+    if (password !== expectedPassword) {
+      return { success: false, error: 'Incorrect password. Please verify your credentials.' };
+    }
 
     setCurrentRole('student');
-    setActiveStudentId(target.id);
+    setActiveStudentId(matched.id);
     localStorage.setItem(STORAGE_KEYS.AUTH_ROLE, 'student');
-    localStorage.setItem(STORAGE_KEYS.ACTIVE_STUDENT_ID, target.id);
-    return { success: true, student: target };
+    localStorage.setItem(STORAGE_KEYS.ACTIVE_STUDENT_ID, matched.id);
+    return {
+      success: true,
+      student: matched,
+      mustChangePassword: Boolean(matched.mustChangePassword),
+      onboardingStatus: matched.onboardingStatus || 'Profile Completed'
+    };
+  };
+
+  /**
+   * HOD creates initial student login account
+   * ONLY Register Number and Initial Password are provided.
+   */
+  const createStudentAccount = ({ registerNumber, initialPassword }) => {
+    if (!registerNumber || !registerNumber.trim()) {
+      return { success: false, error: 'Register Number is mandatory.' };
+    }
+    if (!initialPassword || !initialPassword.trim()) {
+      return { success: false, error: 'Initial Password is mandatory.' };
+    }
+
+    const cleanRegNo = registerNumber.trim().toUpperCase();
+
+    // Check for duplicate account
+    const exists = students.some(
+      (s) => s.registerNumber.trim().toUpperCase() === cleanRegNo
+    );
+    if (exists) {
+      return { 
+        success: false, 
+        error: `A student account with Register Number "${cleanRegNo}" already exists in the department directory.` 
+      };
+    }
+
+    const newStudent = {
+      id: `std_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
+      registerNumber: cleanRegNo,
+      password: initialPassword.trim(),
+      mustChangePassword: true,
+      onboardingStatus: 'Profile Pending',
+      studentStatus: 'Profile Pending',
+      name: 'Profile Pending',
+      profilePhoto: null,
+      email: null,
+      phone: null,
+      location: null,
+      year: 'Not Provided',
+      term: 'Not Provided',
+      sscPercentage: null,
+      interType: null,
+      interPercentage: null,
+      semesterRecords: [],
+      createdAt: new Date().toISOString()
+    };
+
+    setStudents((prev) => [newStudent, ...prev]);
+    return { success: true, student: newStudent };
+  };
+
+  /**
+   * Student first-login password change
+   */
+  const changeStudentPassword = (studentId, newPassword) => {
+    if (!newPassword || newPassword.trim().length < 4) {
+      return { success: false, error: 'New password must be at least 4 characters.' };
+    }
+
+    setStudents((prev) =>
+      prev.map((s) => {
+        if (s.id !== studentId) return s;
+        return {
+          ...s,
+          password: newPassword.trim(),
+          mustChangePassword: false,
+        };
+      })
+    );
+
+    return { success: true };
+  };
+
+  /**
+   * Student completes their full profile after first login
+   */
+  const completeStudentOnboarding = (studentId, profileData) => {
+    setStudents((prev) =>
+      prev.map((s) => {
+        if (s.id !== studentId) return s;
+        return {
+          ...s,
+          ...profileData,
+          name: profileData.name ? profileData.name.trim() : s.name,
+          onboardingStatus: 'Profile Completed',
+          studentStatus: 'Active',
+          mustChangePassword: false,
+        };
+      })
+    );
+
+    return { success: true };
   };
 
   const logout = () => {
@@ -238,6 +354,9 @@ export const AuthProvider = ({ children }) => {
         logout,
         updateStudentProfile,
         updateStudentAcademicDetails,
+        createStudentAccount,
+        changeStudentPassword,
+        completeStudentOnboarding,
         createYearSpecificUpdateRequest,
         isStudentSubmittedForRequest,
         switchDemoStudent,
