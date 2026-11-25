@@ -1,0 +1,106 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root, [data-theme="hod"] {
+    --theme-bg: #D7DCCF;            /* 60% Sage Fog */
+    --theme-surface: #4A192B;       /* 30% Claret Wine */
+    --theme-surface-hover: #5B1F35;
+    --theme-accent: #FF6B1A;        /* 10% Tangerine Flash */
+    --theme-accent-hover: #E55A0E;
+    --theme-accent-glow: rgba(255, 107, 26, 0.45);
+    --theme-text-primary: #1E231D;
+    --theme-text-secondary: #4F584C;
+    --theme-text-muted: #74806F;
+    --theme-surface-text: #F7F5EE;
+    --theme-card-bg: rgba(255, 255, 255, 0.72);
+    --theme-glass-bg: rgba(74, 25, 43, 0.88);
+    --theme-glass-border: rgba(255, 255, 255, 0.16);
+    --theme-clay-shadow: 8px 8px 18px rgba(74, 25, 43, 0.1), -8px -8px 18px rgba(255, 255, 255, 0.85);
+    --theme-clay-inset: inset 2px 2px 4px rgba(255, 255, 255, 0.7), inset -2px -2px 4px rgba(74, 25, 43, 0.08);
+  }
+
+  [data-theme="student"] {
+    --theme-bg: #E8E0CF;            /* 60% Almond Milk */
+    --theme-surface: #7FA8A1;       /* 30% Dusty Teal */
+    --theme-surface-hover: #6D9790;
+    --theme-accent: #E8213A;        /* 10% Cherry Soda */
+    --theme-accent-hover: #C7152D;
+    --theme-accent-glow: rgba(232, 33, 58, 0.45);
+    --theme-text-primary: #1F2926;
+    --theme-text-secondary: #4A5B56;
+    --theme-text-muted: #718580;
+    --theme-surface-text: #FFFFFF;
+    --theme-card-bg: rgba(255, 255, 255, 0.75);
+    --theme-glass-bg: rgba(127, 168, 161, 0.88);
+    --theme-glass-border: rgba(255, 255, 255, 0.28);
+    --theme-clay-shadow: 8px 8px 18px rgba(94, 136, 129, 0.12), -8px -8px 18px rgba(255, 255, 255, 0.9);
+    --theme-clay-inset: inset 2px 2px 4px rgba(255, 255, 255, 0.8), inset -2px -2px 4px rgba(94, 136, 129, 0.1);
+  }
+
+  body {
+    margin: 0;
+    min-height: 100vh;
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+    color: var(--theme-text-primary);
+    background-color: var(--theme-bg);
+    overflow-x: hidden;
+    transition: background-color 0.3s ease, color 0.3s ease;
+  }
+}
+
+/* Glassmorphism Surface Base */
+.glass-surface {
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+}
+
+/* Claymorphism Surface Base */
+.clay-surface {
+  box-shadow: 8px 8px 20px rgba(0, 0, 0, 0.07), 
+              -8px -8px 20px rgba(255, 255, 255, 0.85),
+              inset 1.5px 1.5px 3px rgba(255, 255, 255, 0.7),
+              inset -1.5px -1.5px 3px rgba(0, 0, 0, 0.04);
+  transition: transform 0.25s cubic-bezier(0.2, 0, 0.2, 1), 
+              box-shadow 0.25s cubic-bezier(0.2, 0, 0.2, 1);
+}
+
+.clay-surface:hover {
+  transform: translateY(-2px);
+  box-shadow: 12px 14px 26px rgba(0, 0, 0, 0.1), 
+              -10px -10px 24px rgba(255, 255, 255, 0.95),
+              inset 2px 2px 4px rgba(255, 255, 255, 0.8),
+              inset -1.5px -1.5px 3px rgba(0, 0, 0, 0.05);
+}
+
+.clay-button-base {
+  box-shadow: 5px 5px 12px rgba(0, 0, 0, 0.12), 
+              -4px -4px 10px rgba(255, 255, 255, 0.85),
+              inset 1px 1px 2px rgba(255, 255, 255, 0.6),
+              inset -1px -1px 2px rgba(0, 0, 0, 0.08);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.clay-button-base:active {
+  transform: translateY(1px);
+  box-shadow: inset 3px 3px 6px rgba(0, 0, 0, 0.2), 
+              inset -2px -2px 5px rgba(255, 255, 255, 0.6);
+}
+
+/* Accessible focus ring */
+.focus-accessible:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 3px;
+}
+
+/* Reduced Motion Support */
+@media (prefers-reduced-motion: reduce) {
+  *, ::before, ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
