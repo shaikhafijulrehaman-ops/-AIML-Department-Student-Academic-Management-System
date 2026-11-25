@@ -214,13 +214,13 @@ export default function StudentDashboardPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#E8E0CF] text-[#1F2926] flex flex-col font-sans antialiased pb-12 md:pb-0">
+    <div className="min-h-screen bg-[#E8E0CF] text-[#1F2926] flex flex-col font-sans antialiased pb-12 md:pb-0 w-full max-w-full overflow-x-hidden">
       {/* ============================================================== */}
       {/* MOBILE FLOATING GLASSMORPHISM PILL NAVIGATION (md:hidden)      */}
       {/* ============================================================== */}
       <header
         aria-label="Student Mobile Navigation"
-        className="fixed top-3 inset-x-3 z-50 md:hidden bg-white/85 backdrop-blur-xl border border-white/60 shadow-lg rounded-full px-3 py-1.5 flex items-center justify-between"
+        className="fixed top-3 inset-x-3 z-50 md:hidden bg-white/90 backdrop-blur-xl border border-white/60 shadow-lg rounded-full px-3 py-1.5 flex items-center justify-between max-w-[calc(100vw-24px)] mx-auto"
       >
         {/* Left: Student Identity Badge */}
         <div className="flex items-center gap-1.5 pl-1">
@@ -314,7 +314,7 @@ export default function StudentDashboardPage() {
       </header>
 
       {/* Mobile Branding Bar (Below floating navigation, md:hidden) */}
-      <div className="md:hidden px-4 pt-16 pb-2">
+      <div className="md:hidden px-3 pt-16 pb-2 w-full max-w-full min-w-0">
         <div className="flex items-center gap-2.5 p-2 rounded-2xl bg-white/70 backdrop-blur-xs border border-[#D4CAB4]/70 shadow-2xs">
           <CollegeLogo size="sm" badge />
           <div className="leading-tight flex-1 min-w-0">
@@ -435,7 +435,7 @@ export default function StudentDashboardPage() {
       </header>
 
       {/* Main Content Body */}
-      <main className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-6 w-full flex-1 space-y-6">
+      <main className="max-w-6xl mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-6 w-full flex-1 space-y-4 sm:space-y-6 min-w-0 overflow-x-hidden">
         {/* Toast Feedback */}
         {toastMessage && (
           <div className="p-3.5 rounded-2xl bg-emerald-50 border border-emerald-300 text-emerald-800 text-xs font-medium flex items-center justify-between shadow-sm animate-in fade-in">

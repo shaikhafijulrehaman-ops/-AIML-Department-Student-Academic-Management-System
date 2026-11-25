@@ -27,10 +27,13 @@ import {
   ArrowRight,
   BookOpen,
   MapPin,
-  Download
+  Download,
+  Eye,
+  User
 } from 'lucide-react';
 import BRANDING from '../../config/branding';
 import CollegeLogo from '../../components/CollegeLogo';
+import StudentProfileModal from '../../components/StudentProfileModal';
 import { useAuth } from '../../context/AuthContext';
 import { getStudentLatestAcademics, ALL_SEMESTER_TERMS, getTermsForYear, YEAR_ALLOWED_TERMS } from '../../data/mockData';
 import { downloadExcelReport, downloadPdfReport, generateReportNaming } from '../../utils/reportExporter';
@@ -122,6 +125,23 @@ export default function AdminDashboardPage() {
     setIsMobileFilterOpen(false);
   };
 
+  // Student Profile Modal State
+  const [viewingStudentId, setViewingStudentId] = useState(null);
+  const selectedStudentForModal = useMemo(() => {
+    if (!viewingStudentId) return null;
+    return students.find((s) => s.id === viewingStudentId) || null;
+  }, [students, viewingStudentId]);
+
+  const handleClearSearch = () => {
+    setSearchName('');
+    setSearchRegNo('');
+    setAppliedFilters((prev) => ({
+      ...prev,
+      name: '',
+      regNo: '',
+    }));
+  };
+
   const handleClearFilters = () => {
     setSearchName('');
     setSearchRegNo('');
@@ -163,17 +183,31 @@ export default function AdminDashboardPage() {
     return true;
   };
 
-  // Filtered Students List
+  // Filtered Students List (Real-time Register Number & Name Search + Multi-attribute Filters)
   const filteredStudents = useMemo(() => {
+    const regQuery = searchRegNo.trim().toUpperCase();
+    const nameQuery = searchName.trim().toLowerCase();
+
     return students.filter((s) => {
       const latest = getStudentLatestAcademics(s);
 
-      if (appliedFilters.name && !s.name.toLowerCase().includes(appliedFilters.name.toLowerCase())) {
+      // Search by Register Number (supports exact and partial matching, case-insensitive)
+      if (regQuery && !s.registerNumber.toUpperCase().includes(regQuery)) {
         return false;
       }
       if (appliedFilters.regNo && !s.registerNumber.toUpperCase().includes(appliedFilters.regNo.toUpperCase())) {
         return false;
       }
+
+      // Search by Student Name (supports exact and partial matching, case-insensitive)
+      if (nameQuery && !s.name.toLowerCase().includes(nameQuery)) {
+        return false;
+      }
+      if (appliedFilters.name && !s.name.toLowerCase().includes(appliedFilters.name.toLowerCase())) {
+        return false;
+      }
+
+      // Multi-Parameter Filters
       if (appliedFilters.year !== 'All' && s.year !== appliedFilters.year) {
         return false;
       }
@@ -204,7 +238,7 @@ export default function AdminDashboardPage() {
 
       return true;
     });
-  }, [students, appliedFilters]);
+  }, [students, searchRegNo, searchName, appliedFilters]);
 
   // ==========================================
   // SECTION 3: UPDATE TRACKING STATE
@@ -468,13 +502,13 @@ export default function AdminDashboardPage() {
   const locationOptions = ['All', 'Vijayawada', 'Guntur', 'Kanchikacherla', 'Nandigama', 'Jaggaiahpet', 'Ibrahimpatnam', 'Tiruvuru', 'Mangalagiri'];
 
   return (
-    <div className="min-h-screen bg-[#D7DCCF] text-[#1E231D] flex flex-col font-sans antialiased pb-12 md:pb-0">
+    <div className="min-h-screen bg-[#D7DCCF] text-[#1E231D] flex flex-col font-sans antialiased pb-12 md:pb-0 w-full max-w-full overflow-x-hidden">
       {/* ============================================================== */}
       {/* MOBILE FLOATING GLASSMORPHISM PILL NAVIGATION (md:hidden)      */}
       {/* ============================================================== */}
       <header
         aria-label="Mobile Navigation"
-        className="fixed top-3 inset-x-3 z-50 md:hidden bg-white/85 backdrop-blur-xl border border-white/60 shadow-lg rounded-full px-3 py-1.5 flex items-center justify-between"
+        className="fixed top-3 inset-x-3 z-50 md:hidden bg-white/90 backdrop-blur-xl border border-white/60 shadow-lg rounded-full px-3 py-1.5 flex items-center justify-between max-w-[calc(100vw-24px)] mx-auto"
       >
         {/* Left: Admin Identity Badge */}
         <div className="flex items-center gap-1.5 pl-1">
@@ -562,7 +596,7 @@ export default function AdminDashboardPage() {
       </header>
 
       {/* Mobile Branding Bar (Below floating navigation, md:hidden) */}
-      <div className="md:hidden px-4 pt-16 pb-2">
+      <div className="md:hidden px-3 pt-16 pb-2 w-full max-w-full min-w-0">
         <div className="flex items-center gap-2.5 p-2 rounded-2xl bg-white/70 backdrop-blur-xs border border-[#C1C8B7]/70 shadow-2xs">
           <CollegeLogo size="sm" badge />
           <div className="leading-tight flex-1 min-w-0">
@@ -678,7 +712,7 @@ export default function AdminDashboardPage() {
       </header>
 
       {/* Main Content Body */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 w-full flex-1 space-y-6">
+      <main className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-6 w-full flex-1 space-y-4 sm:space-y-6 min-w-0 overflow-x-hidden">
         {/* ============================================================== */}
         {/* TAB 1: OVERVIEW                                                */}
         {/* ============================================================== */}
@@ -816,6 +850,111 @@ export default function AdminDashboardPage() {
         {/* ============================================================== */}
         {activeTab === 'directory' && (
           <div className="space-y-4 sm:space-y-6">
+            {/* DEDICATED QUICK SEARCH BAR: Register Number & Student Name */}
+            <section aria-label="Student Directory Search" className="bg-white rounded-3xl p-4 sm:p-5 border border-[#C1C8B7] shadow-sm space-y-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-xl bg-[#4A192B]/10 text-[#4A192B] flex items-center justify-center shrink-0">
+                    <Search className="w-4 h-4 text-[#FF6B1A]" />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-sm text-slate-900 leading-tight">
+                      Search Department Students
+                    </h3>
+                    <p className="text-[11px] text-slate-500">
+                      Search instantly by Register Number (Roll No) or Student Name.
+                    </p>
+                  </div>
+                </div>
+
+                {/* Clear search & Mobile filter toggle */}
+                <div className="flex items-center gap-2">
+                  {(searchRegNo || searchName) && (
+                    <button
+                      type="button"
+                      onClick={handleClearSearch}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition-all cursor-pointer"
+                    >
+                      <RotateCcw className="w-3.5 h-3.5 text-[#FF6B1A]" />
+                      <span>Clear Search</span>
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setIsMobileFilterOpen(!isMobileFilterOpen)}
+                    className="md:hidden inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold cursor-pointer"
+                  >
+                    <SlidersHorizontal className="w-3.5 h-3.5 text-[#FF6B1A]" />
+                    <span>{isMobileFilterOpen ? 'Hide Filters' : 'More Filters'}</span>
+                    {activeFilterCount > 0 && (
+                      <span className="px-1.5 py-0.2 rounded-full bg-[#4A192B] text-white text-[9px] font-bold">
+                        {activeFilterCount}
+                      </span>
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              {/* Responsive Search Inputs Grid */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                {/* 1. Search by Register Number */}
+                <div>
+                  <label htmlFor="quick-search-reg" className="block font-bold text-xs text-slate-700 mb-1">
+                    Search Register Number (Roll Number)
+                  </label>
+                  <div className="relative">
+                    <input
+                      id="quick-search-reg"
+                      type="text"
+                      value={searchRegNo}
+                      onChange={(e) => setSearchRegNo(e.target.value)}
+                      placeholder="e.g. 22H71A6125 or partial 6125..."
+                      className="w-full pl-9 pr-8 py-2 rounded-xl border border-slate-300 bg-white text-xs font-mono font-bold text-[#4A192B] placeholder:text-slate-400 placeholder:font-sans placeholder:font-normal outline-none focus:ring-2 focus:ring-[#4A192B]/20 focus:border-[#4A192B] transition-all"
+                    />
+                    <Search className="w-4 h-4 text-[#4A192B] absolute left-3 top-2.5 pointer-events-none" />
+                    {searchRegNo && (
+                      <button
+                        type="button"
+                        onClick={() => setSearchRegNo('')}
+                        className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600 cursor-pointer"
+                        title="Clear Register Number search"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* 2. Search by Student Name */}
+                <div>
+                  <label htmlFor="quick-search-name" className="block font-bold text-xs text-slate-700 mb-1">
+                    Search Student Name
+                  </label>
+                  <div className="relative">
+                    <input
+                      id="quick-search-name"
+                      type="text"
+                      value={searchName}
+                      onChange={(e) => setSearchName(e.target.value)}
+                      placeholder="e.g. Sai Krishna or partial Harsha..."
+                      className="w-full pl-9 pr-8 py-2 rounded-xl border border-slate-300 bg-white text-xs text-slate-800 placeholder:text-slate-400 outline-none focus:ring-2 focus:ring-[#4A192B]/20 focus:border-[#4A192B] transition-all"
+                    />
+                    <User className="w-4 h-4 text-slate-400 absolute left-3 top-2.5 pointer-events-none" />
+                    {searchName && (
+                      <button
+                        type="button"
+                        onClick={() => setSearchName('')}
+                        className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600 cursor-pointer"
+                        title="Clear Student Name search"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </section>
+
             {/* Mobile Filter Toggle Button (md:hidden) */}
             <div className="md:hidden flex items-center justify-between gap-2 p-3 bg-white rounded-2xl border border-[#C1C8B7] shadow-xs">
               <div className="flex items-center gap-2">
@@ -1107,7 +1246,7 @@ export default function AdminDashboardPage() {
                 </div>
               </div>
 
-              {/* DESKTOP VIEW: Full 10 Columns Table (hidden md:block) */}
+              {/* DESKTOP VIEW: Full 11 Columns Table (with Action View Button) (hidden md:block) */}
               <div className="hidden md:block overflow-x-auto">
                 <table className="w-full text-left text-xs border-collapse">
                   <thead>
@@ -1122,13 +1261,28 @@ export default function AdminDashboardPage() {
                       <th className="py-3 px-3 font-bold text-center">Inter / Diploma %</th>
                       <th className="py-3 px-2 font-bold text-center">Latest Sem</th>
                       <th className="py-3 px-3 font-bold text-center">Latest CGPA</th>
+                      <th className="py-3 px-3 font-bold text-center">Action</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 text-slate-800">
                     {filteredStudents.length === 0 ? (
                       <tr>
-                        <td colSpan="10" className="py-8 text-center text-slate-500">
-                          No student records matched the active filter criteria. Click "Clear Filters" to restore all records.
+                        <td colSpan="11" className="py-12 px-4 text-center">
+                          <div className="w-12 h-12 rounded-full bg-slate-100 text-slate-400 mx-auto flex items-center justify-center mb-3">
+                            <Search className="w-6 h-6" />
+                          </div>
+                          <h4 className="font-bold text-sm text-slate-900">No students found</h4>
+                          <p className="text-xs text-slate-500 max-w-md mx-auto mt-1 mb-3">
+                            No students matched your search criteria {searchRegNo ? `for Register Number "${searchRegNo}"` : ''} {searchName ? `for Name "${searchName}"` : ''}.
+                          </p>
+                          <button
+                            type="button"
+                            onClick={handleClearFilters}
+                            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#4A192B] hover:bg-[#35101E] text-white text-xs font-bold shadow-sm transition-all cursor-pointer"
+                          >
+                            <RotateCcw className="w-3.5 h-3.5 text-[#FF6B1A]" />
+                            <span>Clear Search &amp; Restore All Students</span>
+                          </button>
                         </td>
                       </tr>
                     ) : (
@@ -1194,6 +1348,19 @@ export default function AdminDashboardPage() {
                             <td className="py-2.5 px-3 text-center font-bold text-emerald-700">
                               {latest.latestCgpa !== null ? latest.latestCgpa.toFixed(2) : '—'}
                             </td>
+
+                            {/* 11. View Action Button */}
+                            <td className="py-2.5 px-3 text-center">
+                              <button
+                                type="button"
+                                onClick={() => setViewingStudentId(std.id)}
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#4A192B] hover:bg-[#35101E] active:scale-95 text-white font-bold text-xs shadow-xs transition-all cursor-pointer"
+                                title={`View complete profile of ${std.name} (${std.registerNumber})`}
+                              >
+                                <Eye className="w-3.5 h-3.5 text-[#FF6B1A]" />
+                                <span>View</span>
+                              </button>
+                            </td>
                           </tr>
                         );
                       })
@@ -1205,8 +1372,24 @@ export default function AdminDashboardPage() {
               {/* MOBILE DEDICATED VIEW: Responsive Student Cards (md:hidden) */}
               <div className="md:hidden p-3 space-y-3">
                 {filteredStudents.length === 0 ? (
-                  <div className="p-6 text-center text-slate-500 bg-white rounded-2xl border border-slate-200 text-xs">
-                    No student records matched the active filter criteria. Click "Clear Filters" to restore all records.
+                  <div className="p-8 text-center text-slate-500 bg-white rounded-2xl border border-slate-200 text-xs space-y-3">
+                    <div className="w-12 h-12 rounded-full bg-slate-100 text-slate-400 mx-auto flex items-center justify-center">
+                      <Search className="w-6 h-6" />
+                    </div>
+                    <div>
+                      <h4 className="font-bold text-sm text-slate-900">No students found</h4>
+                      <p className="text-xs text-slate-500 mt-1">
+                        No students matched your search criteria {searchRegNo ? `for Register Number "${searchRegNo}"` : ''} {searchName ? `for Name "${searchName}"` : ''}.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleClearFilters}
+                      className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#4A192B] hover:bg-[#35101E] text-white text-xs font-bold shadow-sm transition-all cursor-pointer"
+                    >
+                      <RotateCcw className="w-3.5 h-3.5 text-[#FF6B1A]" />
+                      <span>Clear Search &amp; Restore All</span>
+                    </button>
                   </div>
                 ) : (
                   filteredStudents.map((std) => {
@@ -1266,6 +1449,18 @@ export default function AdminDashboardPage() {
                             </span>
                           </div>
                         </div>
+
+                        {/* View Complete Profile Action Button */}
+                        <div className="pt-2 border-t border-slate-100">
+                          <button
+                            type="button"
+                            onClick={() => setViewingStudentId(std.id)}
+                            className="w-full py-2.5 px-3 rounded-xl bg-[#4A192B] hover:bg-[#35101E] active:scale-[0.99] text-white font-bold text-xs flex items-center justify-center gap-2 shadow-xs transition-all cursor-pointer"
+                          >
+                            <Eye className="w-4 h-4 text-[#FF6B1A]" />
+                            <span>View Complete Profile</span>
+                          </button>
+                        </div>
                       </div>
                     );
                   })
@@ -1281,9 +1476,9 @@ export default function AdminDashboardPage() {
         {activeTab === 'tracking' && (
           <div className="space-y-6">
             {/* Header Lockup & Request Selector */}
-            <div className="bg-white rounded-3xl p-5 sm:p-6 border border-[#C1C8B7] shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
-              <div className="space-y-2">
-                <div className="flex items-center gap-2">
+            <div className="bg-white rounded-3xl p-4 sm:p-6 border border-[#C1C8B7] shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4 w-full max-w-full min-w-0 overflow-hidden">
+              <div className="space-y-2.5 w-full min-w-0">
+                <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
                   <span className="px-2.5 py-0.5 rounded-full bg-[#FF6B1A]/15 text-[#FF6B1A] font-bold text-xs">
                     Year-Specific Update Tracking
                   </span>
@@ -1293,15 +1488,15 @@ export default function AdminDashboardPage() {
                 </div>
 
                 {/* Request Selector */}
-                <div className="flex items-center gap-3">
-                  <label htmlFor="select-req" className="text-xs font-bold text-slate-700">
+                <div className="flex flex-col sm:flex-row sm:items-center gap-1.5 sm:gap-3 w-full min-w-0 max-w-full">
+                  <label htmlFor="select-req" className="text-xs font-bold text-slate-700 shrink-0">
                     Active Request:
                   </label>
                   <select
                     id="select-req"
                     value={selectedRequestId}
                     onChange={(e) => setSelectedRequestId(e.target.value)}
-                    className="p-2 rounded-xl border border-slate-300 bg-white font-bold text-xs text-[#4A192B] outline-none"
+                    className="w-full sm:w-auto max-w-full min-w-0 p-2 rounded-xl border border-slate-300 bg-white font-bold text-xs text-[#4A192B] outline-none truncate"
                   >
                     {updateRequests.map((r) => (
                       <option key={r.id} value={r.id}>
@@ -1312,7 +1507,7 @@ export default function AdminDashboardPage() {
                 </div>
 
                 {activeRequest && (
-                  <p className="text-xs text-slate-600">
+                  <p className="text-xs text-slate-600 break-words">
                     <strong>Instructions:</strong> {activeRequest.instructions} (Target: {activeRequest.targetYear} students for semester {activeRequest.targetSemester})
                   </p>
                 )}
@@ -1321,7 +1516,7 @@ export default function AdminDashboardPage() {
               <button
                 type="button"
                 onClick={() => setIsCreateModalOpen(true)}
-                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#4A192B] hover:bg-[#35101E] text-white font-bold text-xs shadow-md transition-all cursor-pointer self-start md:self-auto"
+                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#4A192B] hover:bg-[#35101E] text-white font-bold text-xs shadow-md transition-all cursor-pointer self-start md:self-auto shrink-0"
               >
                 <PlusCircle className="w-4 h-4 text-[#FF6B1A]" />
                 <span>Create Update Request</span>
@@ -1935,6 +2130,14 @@ export default function AdminDashboardPage() {
           </div>
         )}
       </main>
+
+      {/* Student Complete Profile Modal (HOD View) */}
+      <StudentProfileModal
+        student={selectedStudentForModal}
+        isOpen={Boolean(selectedStudentForModal)}
+        onClose={() => setViewingStudentId(null)}
+        latestAcademics={selectedStudentForModal ? getStudentLatestAcademics(selectedStudentForModal) : null}
+      />
 
       {/* Footer */}
       <footer className="bg-white border-t border-[#C1C8B7] py-4 text-center text-xs text-slate-600">
