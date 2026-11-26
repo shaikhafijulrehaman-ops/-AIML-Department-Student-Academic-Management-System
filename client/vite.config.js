@@ -15,5 +15,17 @@ export default defineConfig({
         secure: false
       }
     }
+  },
+  build: {
+    chunkSizeWarningLimit: 600,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'react-vendor': ['react', 'react-dom', 'react-router-dom'],
+          'lucide-icons': ['lucide-react'],
+          'export-libs': ['xlsx', 'jspdf', 'jspdf-autotable', 'html2canvas']
+        }
+      }
+    }
   }
 });

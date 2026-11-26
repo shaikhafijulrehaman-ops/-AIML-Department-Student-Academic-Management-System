@@ -139,18 +139,21 @@ router.post('/students', async (req, res, next) => {
         created_at: new Date().toISOString()
       });
 
+    const studentData = {
+      id: studentProfile.id,
+      userId: createdAuthUserId,
+      registerNumber: cleanRegNo,
+      isActive: studentProfile.is_active,
+      mustChangePassword: studentProfile.must_change_password,
+      isProfileCompleted: studentProfile.is_profile_completed,
+      createdAt: studentProfile.created_at
+    };
+
     return res.status(201).json({
       success: true,
       message: `Student account for ${cleanRegNo} successfully created.`,
-      data: {
-        id: studentProfile.id,
-        userId: createdAuthUserId,
-        registerNumber: cleanRegNo,
-        isActive: studentProfile.is_active,
-        mustChangePassword: studentProfile.must_change_password,
-        isProfileCompleted: studentProfile.is_profile_completed,
-        createdAt: studentProfile.created_at
-      }
+      student: studentData,
+      data: studentData
     });
   } catch (err) {
     if (createdAuthUserId) {
