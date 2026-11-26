@@ -5,9 +5,14 @@
 
 import { supabase } from './supabaseClient';
 
-const RAW_API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
-// In production on Vercel without a dedicated backend rewrite, default to direct Supabase or full backend URL
-const API_BASE_URL = RAW_API_BASE_URL === '/api' ? '' : RAW_API_BASE_URL;
+// Official Production Render Backend URL:
+const DEFAULT_RENDER_BACKEND_URL = 'https://aiml-department-student-academic.onrender.com';
+
+const RAW_API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
+// Use explicit env var if set, otherwise use official Render backend in production or relative /api proxy in development
+const API_BASE_URL = RAW_API_BASE_URL !== undefined 
+  ? (RAW_API_BASE_URL === '/api' ? '' : RAW_API_BASE_URL)
+  : (import.meta.env.PROD ? DEFAULT_RENDER_BACKEND_URL : '');
 
 const TOKEN_KEY = 'aiml_auth_token';
 
