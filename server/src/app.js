@@ -12,9 +12,12 @@ const app = express();
 app.use(helmet());
 app.use(morgan(ENV.NODE_ENV === 'production' ? 'combined' : 'dev'));
 
-// CORS configuration for local development and production
+// CORS configuration for local development and production Vercel deployments
 const allowedOrigins = [
   ENV.CLIENT_ORIGIN,
+  'https://hodpanel.vercel.app',
+  'https://aiml-hod.vercel.app',
+  'https://aiml-students.vercel.app',
   'http://localhost:5173',
   'http://127.0.0.1:5173'
 ].filter(Boolean);
@@ -22,14 +25,16 @@ const allowedOrigins = [
 app.use(
   cors({
     origin: (origin, callback) => {
-      // Allow requests with no origin (like mobile apps, curl, or Postman)
-      if (!origin || allowedOrigins.includes(origin)) {
+      // Allow requests with no origin (like mobile apps, curl, or server-to-server)
+      if (!origin || allowedOrigins.includes(origin) || origin.endsWith('.vercel.app')) {
         callback(null, true);
       } else {
-        callback(new Error('Blocked by CORS policy'));
+        callback(new Error(`Blocked by CORS policy: origin ${origin} not allowed`));
       }
     },
-    credentials: true
+    credentials: true,
+    methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'Accept']
   })
 );
 

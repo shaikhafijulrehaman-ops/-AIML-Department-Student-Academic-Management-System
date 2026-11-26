@@ -14,7 +14,7 @@ export const ENV = {
   PORT: process.env.PORT || 5000,
   CLIENT_ORIGIN: process.env.CLIENT_ORIGIN || 'http://localhost:5173',
   SUPABASE_URL: process.env.SUPABASE_URL || '',
-  SUPABASE_SECRET_KEY: process.env.SUPABASE_SECRET_KEY || ''
+  SUPABASE_SECRET_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY || ''
 };
 
 export default ENV;
