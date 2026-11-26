@@ -167,7 +167,7 @@ export default function StudentCompleteProfileView({ student, onCompleteProfile,
     });
 
     setIsSubmitting(true);
-    const result = onCompleteProfile({
+    Promise.resolve(onCompleteProfile({
       name: fullName.trim(),
       email: email.trim(),
       phone: phone.trim(),
@@ -181,12 +181,15 @@ export default function StudentCompleteProfileView({ student, onCompleteProfile,
       semesterRecords,
       onboardingStatus: 'Profile Completed',
       studentStatus: 'Active'
-    });
-
-    if (!result || !result.success) {
+    })).then((result) => {
+      if (!result || !result.success) {
+        setIsSubmitting(false);
+        setError(result?.error || 'Failed to complete profile. Please verify your inputs.');
+      }
+    }).catch((err) => {
       setIsSubmitting(false);
-      setError(result?.error || 'Failed to complete profile. Please verify your inputs.');
-    }
+      setError(err?.message || 'Failed to complete profile.');
+    });
   };
 
   return (

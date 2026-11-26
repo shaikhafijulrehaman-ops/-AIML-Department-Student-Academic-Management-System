@@ -6,7 +6,7 @@ import { useTheme } from '../context/ThemeContext';
  * Displays user avatar with initials or photo, role tag, and online status indicator.
  */
 export const ProfileAvatar = ({
-  name = 'Dr. K. Srinivas Rao',
+  name = 'Dr. Thatibalamuralikrishna',
   role = 'HOD', // 'HOD' | 'Student' | 'Faculty'
   imageUrl,
   size = 'md', // 'sm' | 'md' | 'lg'

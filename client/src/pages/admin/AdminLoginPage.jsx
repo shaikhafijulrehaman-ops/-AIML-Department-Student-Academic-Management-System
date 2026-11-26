@@ -16,12 +16,13 @@ export default function AdminLoginPage() {
     setTheme(THEMES.HOD);
   }, [setTheme]);
 
-  const [email, setEmail] = useState('hod.aiml@mictech.ac.in');
-  const [password, setPassword] = useState('admin123');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
 
@@ -30,18 +31,15 @@ export default function AdminLoginPage() {
       return;
     }
 
-    const res = loginAsAdmin(email.trim(), password.trim());
+    setIsSubmitting(true);
+    const res = await loginAsAdmin(email.trim(), password.trim());
+    setIsSubmitting(false);
+
     if (res.success) {
       navigate('/admin/dashboard');
     } else {
       setError(res.error || 'Invalid credentials.');
     }
-  };
-
-  const handleFillDemo = () => {
-    setEmail('hod.aiml@mictech.ac.in');
-    setPassword('admin123');
-    setError('');
   };
 
   return (
@@ -148,25 +146,14 @@ export default function AdminLoginPage() {
 
             <button
               type="submit"
-              className="w-full min-h-[44px] flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-[#4A192B] hover:bg-[#35101E] active:scale-[0.99] text-white font-bold text-xs sm:text-sm shadow-md shadow-[#4A192B]/20 transition-all cursor-pointer"
+              disabled={isSubmitting}
+              className="w-full min-h-[44px] flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-[#4A192B] hover:bg-[#35101E] active:scale-[0.99] text-white font-bold text-xs sm:text-sm shadow-md shadow-[#4A192B]/20 transition-all cursor-pointer disabled:opacity-60"
             >
               <Shield className="w-4 h-4 text-[#FF6B1A]" />
-              <span>Login to Admin Portal</span>
+              <span>{isSubmitting ? 'Authenticating...' : 'Login to Admin Portal'}</span>
               <ArrowRight className="w-4 h-4" />
             </button>
           </form>
-
-          {/* Quick Demo Helper */}
-          <div className="pt-4 border-t border-slate-100 flex items-center justify-between text-xs">
-            <span className="text-slate-500">Demo Mode Active</span>
-            <button
-              type="button"
-              onClick={handleFillDemo}
-              className="text-[#FF6B1A] hover:underline font-bold"
-            >
-              Reset Credentials
-            </button>
-          </div>
         </div>
       </main>
 

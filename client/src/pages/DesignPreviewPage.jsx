@@ -569,7 +569,7 @@ export default function DesignPreviewPage() {
           <Dropdown items={dropdownActions} />
 
           <ProfileAvatar
-            name={isHod ? 'Dr. K. Srinivas Rao' : 'Sai Krishna MIC'}
+            name={isHod ? 'Dr. Thatibalamuralikrishna' : 'Sai Krishna MIC'}
             role={isHod ? 'HOD AIML' : 'AIML Student'}
             size="md"
           />

@@ -63,7 +63,7 @@ export const FloatingGlassNav = ({
   const items = isHod ? hodNavItems : studentNavItems;
 
   const defaultUser = isHod
-    ? { name: 'Dr. K. Srinivas Rao', role: 'Head of Department' }
+    ? { name: 'Dr. Thatibalamuralikrishna', role: 'Head of Department' }
     : { name: 'Sai Krishna MIC', role: 'AIML Student (3rd Year)' };
 
   const profile = userProfile || defaultUser;

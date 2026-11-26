@@ -50,17 +50,20 @@ export default function CreateStudentModal({ isOpen, onClose, onCreateStudent })
     }
 
     setIsSubmitting(true);
-    const result = onCreateStudent({
+    Promise.resolve(onCreateStudent({
       registerNumber: cleanRegNo,
       initialPassword: cleanPassword
-    });
-
-    if (result && result.success) {
-      onClose();
-    } else {
+    })).then((result) => {
+      if (result && result.success) {
+        onClose();
+      } else {
+        setIsSubmitting(false);
+        setError(result?.error || 'Failed to create student account.');
+      }
+    }).catch((err) => {
       setIsSubmitting(false);
-      setError(result?.error || 'Failed to create student account.');
-    }
+      setError(err?.message || 'Failed to create student account.');
+    });
   };
 
   return (

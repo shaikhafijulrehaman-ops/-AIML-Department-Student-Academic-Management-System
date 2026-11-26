@@ -41,11 +41,15 @@ export default function StudentChangePasswordView({ student, onPasswordChanged, 
     }
 
     setIsSubmitting(true);
-    const res = onPasswordChanged(p1);
-    if (!res || !res.success) {
+    Promise.resolve(onPasswordChanged(p1)).then((res) => {
+      if (!res || !res.success) {
+        setIsSubmitting(false);
+        setError(res?.error || 'Failed to update password. Please try again.');
+      }
+    }).catch((err) => {
       setIsSubmitting(false);
-      setError(res?.error || 'Failed to update password. Please try again.');
-    }
+      setError(err?.message || 'Failed to update password.');
+    });
   };
 
   return (

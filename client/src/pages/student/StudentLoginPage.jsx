@@ -16,12 +16,13 @@ export default function StudentLoginPage() {
     setTheme(THEMES.STUDENT);
   }, [setTheme]);
 
-  const [registerNumber, setRegisterNumber] = useState('22H71A6125');
-  const [password, setPassword] = useState('student123');
+  const [registerNumber, setRegisterNumber] = useState('');
+  const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
 
@@ -30,18 +31,15 @@ export default function StudentLoginPage() {
       return;
     }
 
-    const res = loginAsStudent(registerNumber.trim(), password.trim());
+    setIsSubmitting(true);
+    const res = await loginAsStudent(registerNumber.trim(), password.trim());
+    setIsSubmitting(false);
+
     if (res.success) {
       navigate('/student/dashboard');
     } else {
       setError(res.error || 'Invalid credentials.');
     }
-  };
-
-  const handleFillDemo = (regNo) => {
-    setRegisterNumber(regNo);
-    setPassword('student123');
-    setError('');
   };
 
   return (
@@ -161,41 +159,14 @@ export default function StudentLoginPage() {
 
             <button
               type="submit"
-              className="w-full min-h-[44px] flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-[#5E8881] hover:bg-[#4A6F68] active:scale-[0.99] text-white font-bold text-xs sm:text-sm shadow-md shadow-[#5E8881]/25 transition-all cursor-pointer"
+              disabled={isSubmitting}
+              className="w-full min-h-[44px] flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-[#5E8881] hover:bg-[#4A6F68] active:scale-[0.99] text-white font-bold text-xs sm:text-sm shadow-md shadow-[#5E8881]/25 transition-all cursor-pointer disabled:opacity-60"
             >
               <GraduationCap className="w-4 h-4 text-white" />
-              <span>Login to Student Portal</span>
+              <span>{isSubmitting ? 'Authenticating...' : 'Login to Student Portal'}</span>
               <ArrowRight className="w-4 h-4 text-[#E8213A]" />
             </button>
           </form>
-
-          {/* Quick Demo Student Switcher */}
-          <div className="pt-4 border-t border-slate-100 space-y-2 text-xs">
-            <span className="text-slate-500 block font-medium">Quick Demo Accounts:</span>
-            <div className="flex flex-wrap gap-1.5">
-              <button
-                type="button"
-                onClick={() => handleFillDemo('22H71A6125')}
-                className="px-2 py-1 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-mono font-bold"
-              >
-                22H71A6125 (3rd Yr)
-              </button>
-              <button
-                type="button"
-                onClick={() => handleFillDemo('21H71A6105')}
-                className="px-2 py-1 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-mono font-bold"
-              >
-                21H71A6105 (4th Yr)
-              </button>
-              <button
-                type="button"
-                onClick={() => handleFillDemo('23H71A6115')}
-                className="px-2 py-1 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-mono font-bold"
-              >
-                23H71A6115 (2nd Yr)
-              </button>
-            </div>
-          </div>
         </div>
       </main>
 

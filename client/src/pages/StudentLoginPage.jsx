@@ -9,12 +9,13 @@ export default function StudentLoginPage() {
   const navigate = useNavigate();
   const { loginAsStudent } = useAuth();
 
-  const [registerNumber, setRegisterNumber] = useState('22H71A6125');
-  const [password, setPassword] = useState('student123');
+  const [registerNumber, setRegisterNumber] = useState('');
+  const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
 
@@ -27,18 +28,14 @@ export default function StudentLoginPage() {
       return;
     }
 
-    const res = loginAsStudent(registerNumber, password);
+    setIsSubmitting(true);
+    const res = await loginAsStudent(registerNumber.trim(), password.trim());
+    setIsSubmitting(false);
     if (res.success) {
       navigate('/student/dashboard');
     } else {
       setError(res.error || 'Invalid credentials.');
     }
-  };
-
-  const handleFillDemo = () => {
-    setRegisterNumber('22H71A6125');
-    setPassword('student123');
-    setError('');
   };
 
   return (

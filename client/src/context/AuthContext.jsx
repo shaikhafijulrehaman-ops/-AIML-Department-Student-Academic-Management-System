@@ -1,68 +1,24 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
-import { INITIAL_STUDENTS, INITIAL_UPDATE_REQUESTS, getMaxCompletedSemForTerm, getTermsForYear } from '../data/mockData';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import * as api from '../services/api';
+import { getMaxCompletedSemForTerm, getTermsForYear } from '../data/mockData';
 
 const AuthContext = createContext(null);
 
 const STORAGE_KEYS = {
-  STUDENTS: 'aiml_shared_students_data',
-  REQUESTS: 'aiml_shared_update_requests',
   AUTH_ROLE: 'aiml_auth_role',
   ACTIVE_STUDENT_ID: 'aiml_active_student_id',
 };
 
-const sanitizeRequestText = (str) => {
-  if (!str) return '';
-  return str
-    .replace(/sgpa\s*(and|&)\s*cgpa/gi, 'CGPA')
-    .replace(/cgpa\s*(and|&)\s*sgpa/gi, 'CGPA')
-    .replace(/\bsgpa\b/gi, 'CGPA')
-    .replace(/\s+/g, ' ')
-    .trim();
-};
-
-const sanitizeRequestsList = (list) => {
-  if (!Array.isArray(list)) return [];
-  return list.map(req => {
-    const allowed = getTermsForYear(req.targetYear);
-    const validSem = allowed.includes(req.targetSemester) ? req.targetSemester : (allowed[0] || req.targetSemester);
-    return {
-      ...req,
-      targetSemester: validSem,
-      title: sanitizeRequestText(req.title),
-      instructions: sanitizeRequestText(req.instructions),
-    };
-  });
-};
-
-const sanitizeStudentsList = (list) => {
-  if (!Array.isArray(list)) return [];
-  return list.map(s => {
-    const isCompleted = s.onboardingStatus === 'Profile Completed' || 
-      (s.name && s.name !== 'Profile Pending' && s.year && s.year !== 'Not Provided');
-    
-    return {
-      ...s,
-      onboardingStatus: s.onboardingStatus || (isCompleted ? 'Profile Completed' : 'Profile Pending'),
-      mustChangePassword: Boolean(s.mustChangePassword),
-      studentStatus: s.studentStatus || (isCompleted ? 'Active' : 'Profile Pending'),
-      password: s.password || 'student123',
-      semesterRecords: (s.semesterRecords || []).map(r => {
-        const { sgpa, ...cleanRecord } = r;
-        return cleanRecord;
-      })
-    };
-  });
-};
-
 export const AuthProvider = ({ children }) => {
-  // Demo authenticated role: 'admin' | 'student' | null
   const [currentRole, setCurrentRole] = useState(() => {
     return localStorage.getItem(STORAGE_KEYS.AUTH_ROLE) || null;
   });
 
-  // HOD Profile
+  const [loading, setLoading] = useState(true);
+
+  // Official HOD Profile (persisted per DVR & Dr. HS MIC College of Technology standards)
   const [hodUser] = useState({
-    name: 'Dr. K. Srinivas Rao',
+    name: 'Dr. Thatibalamuralikrishna',
     title: 'Professor & Head of Department',
     department: 'Department of Artificial Intelligence and Machine Learning',
     email: 'hod.aiml@mictech.ac.in',
@@ -70,258 +26,290 @@ export const AuthProvider = ({ children }) => {
     role: 'Head of Department'
   });
 
-  // All department students loaded from localStorage or initialized with INITIAL_STUDENTS
-  const [students, setStudents] = useState(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEYS.STUDENTS);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          return sanitizeStudentsList(parsed);
-        }
-      }
-    } catch (e) {
-      console.error('Error loading students from localStorage', e);
-    }
-    return INITIAL_STUDENTS;
-  });
+  // State managed from database API
+  const [students, setStudents] = useState([]);
+  const [updateRequests, setUpdateRequests] = useState([]);
+  const [activeStudent, setActiveStudent] = useState(null);
+  const [analytics, setAnalytics] = useState(null);
 
-  // Active HOD update requests loaded from localStorage
-  const [updateRequests, setUpdateRequests] = useState(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEYS.REQUESTS);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          return sanitizeRequestsList(parsed);
-        }
-      }
-    } catch (e) {
-      console.error('Error loading requests from localStorage', e);
-    }
-    return INITIAL_UPDATE_REQUESTS;
-  });
-
-  // Active logged-in student id (defaults to 'std_1' = K. Sai Krishna)
-  const [activeStudentId, setActiveStudentId] = useState(() => {
-    return localStorage.getItem(STORAGE_KEYS.ACTIVE_STUDENT_ID) || 'std_1';
-  });
-
-  // Sync state changes to localStorage
+  // Initialize session from backend token if present
   useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEYS.STUDENTS, JSON.stringify(students));
-    } catch (e) {
-      console.error('Failed to sync students to localStorage', e);
+    const initializeAuth = async () => {
+      const token = api.getAuthToken();
+      if (!token) {
+        setLoading(false);
+        return;
+      }
+
+      const res = await api.getCurrentUser();
+      if (res.success) {
+        const role = res.user?.role === 'hod' ? 'admin' : 'student';
+        setCurrentRole(role);
+        localStorage.setItem(STORAGE_KEYS.AUTH_ROLE, role);
+
+        if (role === 'student' && res.user?.studentProfile) {
+          const profile = res.user.studentProfile;
+          setActiveStudent({
+            id: profile.id,
+            registerNumber: profile.register_number,
+            name: profile.full_name || 'Profile Pending',
+            email: profile.email,
+            phone: profile.phone_number,
+            location: profile.location,
+            year: profile.current_year ? `Year ${profile.current_year}` : 'Not Provided',
+            term: profile.current_term ? `Term ${profile.current_term}` : 'Not Provided',
+            currentYear: profile.current_year,
+            currentTerm: profile.current_term,
+            sscPercentage: profile.ssc_percentage,
+            interType: profile.qualification_type,
+            interPercentage: profile.intermediate_percentage,
+            profilePhoto: profile.profile_photo_url,
+            mustChangePassword: Boolean(profile.must_change_password),
+            onboardingStatus: profile.is_profile_completed ? 'Profile Completed' : 'Profile Pending',
+            studentStatus: profile.is_active ? 'Active' : 'Inactive',
+            semesterRecords: profile.semester_records || []
+          });
+        }
+      } else {
+        // Token invalid or expired
+        api.clearAuthToken();
+        setCurrentRole(null);
+        localStorage.removeItem(STORAGE_KEYS.AUTH_ROLE);
+      }
+      setLoading(false);
+    };
+
+    initializeAuth();
+  }, []);
+
+  // Fetch HOD data if role is admin
+  const refreshHodData = useCallback(async () => {
+    if (currentRole !== 'admin') return;
+    const [studentsRes, campaignsRes, analyticsRes] = await Promise.all([
+      api.fetchHodStudents(),
+      api.fetchCampaigns(),
+      api.fetchAnalytics()
+    ]);
+
+    if (studentsRes.success && Array.isArray(studentsRes.students)) {
+      // Map API schema to UI expectations
+      const mapped = studentsRes.students.map((s) => ({
+        id: s.id,
+        registerNumber: s.register_number,
+        name: s.full_name || 'Profile Pending',
+        email: s.email,
+        phone: s.phone_number,
+        location: s.location,
+        year: s.current_year ? `Year ${s.current_year}` : 'Not Provided',
+        term: s.current_term ? `Term ${s.current_term}` : 'Not Provided',
+        currentYear: s.current_year,
+        currentTerm: s.current_term,
+        sscPercentage: s.ssc_percentage,
+        interType: s.qualification_type,
+        interPercentage: s.intermediate_percentage,
+        profilePhoto: s.profile_photo_url,
+        mustChangePassword: Boolean(s.must_change_password),
+        onboardingStatus: s.is_profile_completed ? 'Profile Completed' : 'Profile Pending',
+        studentStatus: s.is_active ? 'Active' : 'Inactive',
+        semesterRecords: (s.aiml_semester_records || []).map((r) => ({
+          term: `Semester ${r.semester_number}`,
+          semesterNumber: r.semester_number,
+          cgpa: r.cumulative_cgpa,
+          status: 'Updated',
+          submittedAt: r.submitted_at
+        }))
+      }));
+      setStudents(mapped);
     }
-  }, [students]);
+
+    if (campaignsRes.success && Array.isArray(campaignsRes.campaigns)) {
+      const mappedReqs = campaignsRes.campaigns.map((c) => ({
+        id: c.id,
+        title: c.title,
+        targetYear: `Year ${c.target_year}`,
+        targetSemester: `Semester ${c.target_semester}`,
+        instructions: c.instructions,
+        deadline: c.deadline,
+        status: c.is_active ? 'Active' : 'Closed',
+        createdAt: c.created_at ? c.created_at.split('T')[0] : '',
+        submittedCount: c.submitted_count || 0,
+        pendingCount: c.pending_count || 0
+      }));
+      setUpdateRequests(mappedReqs);
+    }
+
+    if (analyticsRes.success) {
+      setAnalytics(analyticsRes.analytics);
+    }
+  }, [currentRole]);
 
   useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEYS.REQUESTS, JSON.stringify(updateRequests));
-    } catch (e) {
-      console.error('Failed to sync requests to localStorage', e);
+    if (currentRole === 'admin') {
+      refreshHodData();
     }
-  }, [updateRequests]);
+  }, [currentRole, refreshHodData]);
 
-  const activeStudent = students.find((s) => s.id === activeStudentId) || students[0];
+  // Login as HOD / Admin
+  const loginAsAdmin = async (email, password) => {
+    if (!email || !password) {
+      return { success: false, error: 'Please enter both Email and Password.' };
+    }
 
-  const loginAsAdmin = (email, password) => {
-    if (email && password) {
+    const res = await api.loginHOD({ email: email.trim(), password: password.trim() });
+    if (res.success) {
       setCurrentRole('admin');
       localStorage.setItem(STORAGE_KEYS.AUTH_ROLE, 'admin');
+      await refreshHodData();
       return { success: true };
     }
-    return { success: false, error: 'Please enter valid credentials.' };
+    return { success: false, error: res.error || 'Authentication failed' };
   };
 
-  const loginAsStudent = (registerNumber, password) => {
+  // Login as Student
+  const loginAsStudent = async (registerNumber, password) => {
     if (!registerNumber || !password) {
       return { success: false, error: 'Please enter Register Number and Password.' };
     }
-    const cleanRegNo = registerNumber.trim().toUpperCase();
-    const matched = students.find(
-      (s) => s.registerNumber.trim().toUpperCase() === cleanRegNo
-    );
 
-    if (!matched) {
-      return { success: false, error: 'No student account found with this Register Number.' };
-    }
+    const res = await api.loginStudent({
+      registerNumber: registerNumber.trim(),
+      password: password.trim()
+    });
 
-    const expectedPassword = matched.password || 'student123';
-    if (password !== expectedPassword) {
-      return { success: false, error: 'Incorrect password. Please verify your credentials.' };
-    }
+    if (res.success) {
+      setCurrentRole('student');
+      localStorage.setItem(STORAGE_KEYS.AUTH_ROLE, 'student');
 
-    setCurrentRole('student');
-    setActiveStudentId(matched.id);
-    localStorage.setItem(STORAGE_KEYS.AUTH_ROLE, 'student');
-    localStorage.setItem(STORAGE_KEYS.ACTIVE_STUDENT_ID, matched.id);
-    return {
-      success: true,
-      student: matched,
-      mustChangePassword: Boolean(matched.mustChangePassword),
-      onboardingStatus: matched.onboardingStatus || 'Profile Completed'
-    };
-  };
-
-  /**
-   * HOD creates initial student login account
-   * ONLY Register Number and Initial Password are provided.
-   */
-  const createStudentAccount = ({ registerNumber, initialPassword }) => {
-    if (!registerNumber || !registerNumber.trim()) {
-      return { success: false, error: 'Register Number is mandatory.' };
-    }
-    if (!initialPassword || !initialPassword.trim()) {
-      return { success: false, error: 'Initial Password is mandatory.' };
-    }
-
-    const cleanRegNo = registerNumber.trim().toUpperCase();
-
-    // Check for duplicate account
-    const exists = students.some(
-      (s) => s.registerNumber.trim().toUpperCase() === cleanRegNo
-    );
-    if (exists) {
-      return { 
-        success: false, 
-        error: `A student account with Register Number "${cleanRegNo}" already exists in the department directory.` 
-      };
-    }
-
-    const newStudent = {
-      id: `std_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
-      registerNumber: cleanRegNo,
-      password: initialPassword.trim(),
-      mustChangePassword: true,
-      onboardingStatus: 'Profile Pending',
-      studentStatus: 'Profile Pending',
-      name: 'Profile Pending',
-      profilePhoto: null,
-      email: null,
-      phone: null,
-      location: null,
-      year: 'Not Provided',
-      term: 'Not Provided',
-      sscPercentage: null,
-      interType: null,
-      interPercentage: null,
-      semesterRecords: [],
-      createdAt: new Date().toISOString()
-    };
-
-    setStudents((prev) => [newStudent, ...prev]);
-    return { success: true, student: newStudent };
-  };
-
-  /**
-   * Student first-login password change
-   */
-  const changeStudentPassword = (studentId, newPassword) => {
-    if (!newPassword || newPassword.trim().length < 4) {
-      return { success: false, error: 'New password must be at least 4 characters.' };
-    }
-
-    setStudents((prev) =>
-      prev.map((s) => {
-        if (s.id !== studentId) return s;
-        return {
-          ...s,
-          password: newPassword.trim(),
-          mustChangePassword: false,
+      const profile = res.user?.studentProfile;
+      if (profile) {
+        const studentObj = {
+          id: profile.id,
+          registerNumber: profile.register_number,
+          name: profile.full_name || 'Profile Pending',
+          email: profile.email,
+          phone: profile.phone_number,
+          location: profile.location,
+          year: profile.current_year ? `Year ${profile.current_year}` : 'Not Provided',
+          term: profile.current_term ? `Term ${profile.current_term}` : 'Not Provided',
+          currentYear: profile.current_year,
+          currentTerm: profile.current_term,
+          sscPercentage: profile.ssc_percentage,
+          interType: profile.qualification_type,
+          interPercentage: profile.intermediate_percentage,
+          profilePhoto: profile.profile_photo_url,
+          mustChangePassword: Boolean(profile.must_change_password),
+          onboardingStatus: profile.is_profile_completed ? 'Profile Completed' : 'Profile Pending',
+          studentStatus: profile.is_active ? 'Active' : 'Inactive',
+          semesterRecords: (profile.semester_records || []).map((r) => ({
+            term: `Semester ${r.semester_number}`,
+            semesterNumber: r.semester_number,
+            cgpa: r.cumulative_cgpa,
+            status: 'Updated',
+            submittedAt: r.submitted_at
+          }))
         };
-      })
-    );
-
-    return { success: true };
-  };
-
-  /**
-   * Student completes their full profile after first login
-   */
-  const completeStudentOnboarding = (studentId, profileData) => {
-    setStudents((prev) =>
-      prev.map((s) => {
-        if (s.id !== studentId) return s;
+        setActiveStudent(studentObj);
         return {
-          ...s,
-          ...profileData,
-          name: profileData.name ? profileData.name.trim() : s.name,
-          onboardingStatus: 'Profile Completed',
-          studentStatus: 'Active',
-          mustChangePassword: false,
+          success: true,
+          student: studentObj,
+          mustChangePassword: Boolean(profile.must_change_password),
+          onboardingStatus: profile.is_profile_completed ? 'Profile Completed' : 'Profile Pending'
         };
-      })
-    );
+      }
+      return { success: true };
+    }
 
-    return { success: true };
+    return { success: false, error: res.error || 'Authentication failed.' };
   };
 
-  const logout = () => {
-    setCurrentRole(null);
-    localStorage.removeItem(STORAGE_KEYS.AUTH_ROLE);
+  // Create Student Account by HOD
+  const createStudentAccount = async ({ registerNumber, initialPassword }) => {
+    if (!registerNumber || !initialPassword) {
+      return { success: false, error: 'Register Number and Initial Password are required.' };
+    }
+
+    const res = await api.createStudentAccount({
+      registerNumber: registerNumber.trim().toUpperCase(),
+      initialPassword: initialPassword.trim()
+    });
+
+    if (res.success) {
+      await refreshHodData();
+      return { success: true, student: res.student };
+    }
+    return { success: false, error: res.error || 'Failed to create student account' };
   };
 
-  /**
-   * Student Profile update:
-   * Only called when explicit "Save Changes" is clicked.
-   */
-  const updateStudentProfile = (studentId, updatedFields) => {
-    setStudents((prev) =>
-      prev.map((s) => {
-        if (s.id !== studentId) return s;
-        return {
-          ...s,
-          ...updatedFields,
-        };
-      })
-    );
+  // Student changes initial password
+  const changeStudentPassword = async (studentId, newPassword) => {
+    const res = await api.changeInitialPassword(newPassword);
+    if (res.success) {
+      setActiveStudent((prev) => (prev ? { ...prev, mustChangePassword: false } : prev));
+      return { success: true };
+    }
+    return { success: false, error: res.error || 'Password update failed.' };
   };
 
-  /**
-   * Student Academic Details update:
-   * Only called when explicit "Save Academic Details" is clicked.
-   */
-  const updateStudentAcademicDetails = (studentId, { sscPercentage, interType, interPercentage, semesterRecords }) => {
-    setStudents((prev) =>
-      prev.map((s) => {
-        if (s.id !== studentId) return s;
-        return {
-          ...s,
-          sscPercentage: parseFloat(sscPercentage) || s.sscPercentage,
-          interType: interType || s.interType,
-          interPercentage: parseFloat(interPercentage) || s.interPercentage,
-          semesterRecords: semesterRecords || s.semesterRecords,
-        };
-      })
-    );
+  // Student completes onboarding profile
+  const completeStudentOnboarding = async (studentId, profileData) => {
+    const targetId = studentId || activeStudent?.id;
+    const res = await api.completeStudentProfile(targetId, profileData);
+    if (res.success) {
+      setActiveStudent((prev) => ({
+        ...prev,
+        ...profileData,
+        onboardingStatus: 'Profile Completed',
+        studentStatus: 'Active',
+        mustChangePassword: false
+      }));
+      return { success: true };
+    }
+    return { success: false, error: res.error || 'Profile completion failed' };
   };
 
-  /**
-   * HOD creates a year-specific update request
-   */
-  const createYearSpecificUpdateRequest = ({ title, targetYear, targetSemester, instructions }) => {
-    const allowed = getTermsForYear(targetYear);
-    const validSemester = allowed.includes(targetSemester) ? targetSemester : (allowed[0] || targetSemester);
-    const newReq = {
-      id: `req_${Date.now()}`,
+  // Student submits or updates a semester record
+  const submitSemesterCgpa = async ({ semesterNumber, cumulativeCgpa }) => {
+    const res = await api.submitSemesterRecord({ semesterNumber, cumulativeCgpa });
+    if (res.success) {
+      const recordsRes = await api.fetchStudentRecords();
+      if (recordsRes.success && Array.isArray(recordsRes.records)) {
+        const updatedRecords = recordsRes.records.map((r) => ({
+          term: `Semester ${r.semester_number}`,
+          semesterNumber: r.semester_number,
+          cgpa: r.cumulative_cgpa,
+          status: 'Updated',
+          submittedAt: r.submitted_at
+        }));
+        setActiveStudent((prev) => (prev ? { ...prev, semesterRecords: updatedRecords } : prev));
+      }
+      return { success: true };
+    }
+    return { success: false, error: res.error || 'Failed to submit semester CGPA' };
+  };
+
+  // Create Campaign / Update Request
+  const createYearSpecificUpdateRequest = async ({ title, targetYear, targetSemester, instructions, deadline }) => {
+    // Convert 'Year 2' -> 2, 'Semester 3' -> 3
+    const parsedYear = parseInt(String(targetYear).replace(/\D/g, ''), 10) || 2;
+    const parsedSem = parseInt(String(targetSemester).replace(/\D/g, ''), 10) || 1;
+    const targetTerm = (parsedSem % 2 === 0) ? 2 : 1;
+
+    const res = await api.createCampaign({
       title: title.trim(),
-      targetYear,
-      targetSemester: validSemester,
+      target_year: parsedYear,
+      target_term: targetTerm,
+      target_semester: parsedSem,
       instructions: instructions ? instructions.trim() : 'Please update your official semester grades.',
-      createdAt: new Date().toISOString().split('T')[0],
-      deadline: new Date(Date.now() + 15 * 86400000).toISOString().split('T')[0],
-      status: 'Active',
-    };
-    setUpdateRequests((prev) => [newReq, ...prev]);
-    return newReq;
+      deadline: deadline || new Date(Date.now() + 15 * 86400000).toISOString().split('T')[0]
+    });
+
+    if (res.success) {
+      await refreshHodData();
+      return res.campaign;
+    }
+    throw new Error(res.error || 'Failed to create campaign');
   };
 
-  /**
-   * Checks whether a student has submitted the requested record for a specific request.
-   * A student is SUBMITTED if they belong to targetYear AND have valid non-null CGPA for targetSemester!
-   */
   const isStudentSubmittedForRequest = (student, request) => {
     if (!student || !request) return false;
     if (student.year !== request.targetYear) return false;
@@ -330,18 +318,18 @@ export const AuthProvider = ({ children }) => {
     return Boolean(record && record.cgpa !== null && record.status === 'Updated');
   };
 
-  // Helper to switch active student (for testing different students)
-  const switchDemoStudent = (id) => {
-    const target = students.find((s) => s.id === id);
-    if (target) {
-      setActiveStudentId(target.id);
-      localStorage.setItem(STORAGE_KEYS.ACTIVE_STUDENT_ID, target.id);
-    }
+  const logout = () => {
+    api.clearAuthToken();
+    setCurrentRole(null);
+    setActiveStudent(null);
+    localStorage.removeItem(STORAGE_KEYS.AUTH_ROLE);
+    localStorage.removeItem(STORAGE_KEYS.ACTIVE_STUDENT_ID);
   };
 
   return (
     <AuthContext.Provider
       value={{
+        loading,
         currentRole,
         isAdminAuthenticated: currentRole === 'admin',
         isStudentAuthenticated: currentRole === 'student',
@@ -349,17 +337,18 @@ export const AuthProvider = ({ children }) => {
         activeStudent,
         students,
         updateRequests,
+        analytics,
         loginAsAdmin,
+        loginAsHod: loginAsAdmin,
         loginAsStudent,
         logout,
-        updateStudentProfile,
-        updateStudentAcademicDetails,
         createStudentAccount,
         changeStudentPassword,
         completeStudentOnboarding,
+        submitSemesterCgpa,
         createYearSpecificUpdateRequest,
         isStudentSubmittedForRequest,
-        switchDemoStudent,
+        refreshHodData
       }}
     >
       {children}

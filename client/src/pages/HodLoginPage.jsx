@@ -9,12 +9,13 @@ export default function HodLoginPage() {
   const navigate = useNavigate();
   const { loginAsHod } = useAuth();
 
-  const [email, setEmail] = useState('hod.aiml@mictech.ac.in');
-  const [password, setPassword] = useState('hod123');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
 
@@ -27,18 +28,14 @@ export default function HodLoginPage() {
       return;
     }
 
-    const res = loginAsHod(email, password);
+    setIsSubmitting(true);
+    const res = await loginAsHod(email.trim(), password.trim());
+    setIsSubmitting(false);
     if (res.success) {
-      navigate('/hod/dashboard');
+      navigate('/admin/dashboard');
     } else {
       setError(res.error || 'Invalid credentials.');
     }
-  };
-
-  const handleFillDemo = () => {
-    setEmail('hod.aiml@mictech.ac.in');
-    setPassword('hod123');
-    setError('');
   };
 
   return (

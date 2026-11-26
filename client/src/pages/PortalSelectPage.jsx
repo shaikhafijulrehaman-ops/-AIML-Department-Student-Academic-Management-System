@@ -7,17 +7,6 @@ import { useAuth } from '../context/AuthContext';
 
 export default function PortalSelectPage() {
   const navigate = useNavigate();
-  const { loginAsHod, loginAsStudent } = useAuth();
-
-  const handleQuickHod = () => {
-    loginAsHod('hod.aiml@mictech.ac.in', 'hod123');
-    navigate('/hod/dashboard');
-  };
-
-  const handleQuickStudent = () => {
-    loginAsStudent('22H71A6125', 'student123');
-    navigate('/student/dashboard');
-  };
 
   return (
     <div className="min-h-screen bg-[#F4F6F0] flex flex-col justify-between">
@@ -95,19 +84,12 @@ export default function PortalSelectPage() {
 
             <div className="space-y-2.5">
               <Link
-                to="/hod/login"
+                to="/admin/login"
                 className="w-full flex items-center justify-center gap-2 py-3 px-5 rounded-xl bg-[#4A192B] hover:bg-[#35101E] text-white font-bold text-xs shadow-md transition-all active:scale-[0.99]"
               >
                 <span>Open HOD Login Screen</span>
                 <ArrowRight className="w-4 h-4 text-[#FF6B1A]" />
               </Link>
-              <button
-                type="button"
-                onClick={handleQuickHod}
-                className="w-full py-2 px-3 rounded-lg text-[11px] font-semibold text-[#4A192B] bg-[#D7DCCF]/60 hover:bg-[#D7DCCF] transition-colors"
-              >
-                Instant Demo Access (Dr. K. Srinivas Rao)
-              </button>
             </div>
           </div>
 
@@ -154,13 +136,6 @@ export default function PortalSelectPage() {
                 <span>Open Student Login Screen</span>
                 <ArrowRight className="w-4 h-4 text-[#E8213A]" />
               </Link>
-              <button
-                type="button"
-                onClick={handleQuickStudent}
-                className="w-full py-2 px-3 rounded-lg text-[11px] font-semibold text-[#3A6B64] bg-[#E8E0CF]/60 hover:bg-[#E8E0CF] transition-colors"
-              >
-                Instant Demo Access (K. Sai Krishna &bull; 22H71A6125)
-              </button>
             </div>
           </div>
         </div>
