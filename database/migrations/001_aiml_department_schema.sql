@@ -62,6 +62,7 @@ AS $$
     FROM public.aiml_user_roles
     WHERE user_id = auth.uid()
       AND role = 'hod'
+      AND is_active = true
   );
 $$;
 
@@ -83,6 +84,7 @@ GRANT EXECUTE ON FUNCTION public.aiml_is_hod() TO authenticated, service_role;
 CREATE TABLE IF NOT EXISTS public.aiml_user_roles (
   user_id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
   role TEXT NOT NULL CHECK (role IN ('hod', 'student')),
+  is_active BOOLEAN NOT NULL DEFAULT true,
   created_at TIMESTAMPTZ NOT NULL DEFAULT pg_catalog.now()
 );
 

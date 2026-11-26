@@ -10,7 +10,7 @@ const DEFAULT_RENDER_BACKEND_URL = 'https://aiml-department-student-academic.onr
 
 const RAW_API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 // Use explicit env var if set, otherwise use official Render backend in production or relative /api proxy in development
-const API_BASE_URL = RAW_API_BASE_URL !== undefined 
+export const API_BASE_URL = RAW_API_BASE_URL !== undefined 
   ? (RAW_API_BASE_URL === '/api' ? '' : RAW_API_BASE_URL)
   : (import.meta.env.PROD ? DEFAULT_RENDER_BACKEND_URL : '');
 
@@ -33,11 +33,6 @@ export const clearAuthToken = () => {
 };
 
 const request = async (endpoint, options = {}) => {
-  if (!API_BASE_URL) {
-    // No external backend URL configured (e.g. standalone Vercel frontend)
-    return { success: false, fallback: true, error: 'No backend API URL configured.' };
-  }
-
   const token = getAuthToken();
   const headers = {
     'Content-Type': 'application/json',
@@ -46,7 +41,7 @@ const request = async (endpoint, options = {}) => {
     ...(options.headers || {})
   };
 
-  const url = `${API_BASE_URL}${endpoint}`;
+  const url = API_BASE_URL ? `${API_BASE_URL}${endpoint}` : endpoint;
   try {
     const res = await fetch(url, {
       ...options,
@@ -79,19 +74,18 @@ const getDeterministicStudentEmail = (regNo) => {
 // ==========================================
 
 export const loginHOD = async ({ email, password }) => {
-  // 1. Try Express backend if configured
-  if (API_BASE_URL) {
-    const res = await request('/api/auth/login', {
-      method: 'POST',
-      body: JSON.stringify({ email, password })
-    });
-    if (res.success && res.token) {
-      setAuthToken(res.token);
-      return res;
-    }
-    if (!res.fallback && res.status !== 405 && res.status !== 404) {
-      return res;
-    }
+  // 1. Try Express backend
+  const res = await request('/api/auth/login', {
+    method: 'POST',
+    body: JSON.stringify({ email, password })
+  });
+  if (res.success && res.token) {
+    setAuthToken(res.token);
+    return res;
+  }
+  // Return server response directly if it responded with an authentication status (e.g. 401, 403, 400)
+  if (!res.fallback && res.status !== 405 && res.status !== 404) {
+    return res;
   }
 
   // 2. Direct Supabase Auth fallback (when frontend is deployed alone on Vercel)
@@ -137,19 +131,18 @@ export const loginHOD = async ({ email, password }) => {
 export const loginStudent = async ({ registerNumber, password }) => {
   const cleanRegNo = String(registerNumber).trim().toUpperCase();
 
-  // 1. Try Express backend if configured
-  if (API_BASE_URL) {
-    const res = await request('/api/auth/student-login', {
-      method: 'POST',
-      body: JSON.stringify({ registerNumber: cleanRegNo, password })
-    });
-    if (res.success && res.token) {
-      setAuthToken(res.token);
-      return res;
-    }
-    if (!res.fallback && res.status !== 405 && res.status !== 404) {
-      return res;
-    }
+  // 1. Try Express backend
+  const res = await request('/api/auth/student-login', {
+    method: 'POST',
+    body: JSON.stringify({ registerNumber: cleanRegNo, password })
+  });
+  if (res.success && res.token) {
+    setAuthToken(res.token);
+    return res;
+  }
+  // Return server response directly if it responded with an authentication status (e.g. 401, 403, 400)
+  if (!res.fallback && res.status !== 405 && res.status !== 404) {
+    return res;
   }
 
   // 2. Direct Supabase Auth fallback

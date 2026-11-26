@@ -51,14 +51,14 @@ router.post('/login', async (req, res, next) => {
     // Verify HOD role in database
     const { data: roleRecord, error: roleError } = await supabaseAdmin
       .from('aiml_user_roles')
-      .select('role')
+      .select('role, is_active')
       .eq('user_id', authUser.id)
       .single();
 
-    if (roleError || !roleRecord || roleRecord.role !== 'hod') {
+    if (roleError || !roleRecord || roleRecord.role !== 'hod' || !roleRecord.is_active) {
       return res.status(403).json({
         success: false,
-        error: 'Access denied: You do not possess HOD administrative permissions.'
+        error: 'Access denied: You do not possess active HOD administrative permissions.'
       });
     }
 
@@ -193,11 +193,11 @@ router.get('/me', requireAuth, async (req, res, next) => {
   try {
     const { data: roleRecord } = await supabaseAdmin
       .from('aiml_user_roles')
-      .select('role')
+      .select('role, is_active')
       .eq('user_id', req.user.id)
       .single();
 
-    const role = roleRecord?.role || 'student';
+    const role = (roleRecord?.is_active && roleRecord?.role === 'hod') ? 'hod' : 'student';
 
     if (role === 'hod') {
       return res.json({

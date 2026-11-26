@@ -110,6 +110,7 @@ router.post('/students', async (req, res, next) => {
       .insert({
         user_id: createdAuthUserId,
         role: 'student',
+        is_active: true,
         created_at: new Date().toISOString()
       });
 

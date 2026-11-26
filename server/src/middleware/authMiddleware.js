@@ -76,9 +76,10 @@ export async function requireHodRole(req, res, next) {
 
     const { data: roleRecord, error } = await supabaseAdmin
       .from('aiml_user_roles')
-      .select('role')
+      .select('role, is_active')
       .eq('user_id', req.user.id)
       .eq('role', 'hod')
+      .eq('is_active', true)
       .single();
 
     if (error || !roleRecord) {

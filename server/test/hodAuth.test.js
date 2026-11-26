@@ -9,6 +9,8 @@ let baseUrl;
 
 // Sample Valid UUIDs
 const HOD_USER_ID = '99999999-9999-4999-a999-999999999999';
+const INACTIVE_HOD_USER_ID = '88888888-8888-4888-a888-888888888888';
+const NO_ROLE_USER_ID = '77777777-7777-4777-a777-777777777777';
 const STUDENT_USER_ID = 'aaaa1111-1111-4111-a111-111111111111';
 const STUDENT_PROFILE_ID = '11111111-1111-4111-a111-111111111111';
 
@@ -31,6 +33,16 @@ function initializeMockDatabase() {
       email: 'hod.aiml@mictech.ac.in',
       user_metadata: { name: 'Dr. Thatibalamuralikrishna', role: 'hod' }
     },
+    [INACTIVE_HOD_USER_ID]: {
+      id: INACTIVE_HOD_USER_ID,
+      email: 'inactive.hod@mictech.ac.in',
+      user_metadata: { name: 'Former HOD', role: 'hod' }
+    },
+    [NO_ROLE_USER_ID]: {
+      id: NO_ROLE_USER_ID,
+      email: 'norole@mictech.ac.in',
+      user_metadata: { name: 'Unassigned User' }
+    },
     [STUDENT_USER_ID]: {
       id: STUDENT_USER_ID,
       email: '21b91a5401@student.aiml.mictech.ac.in',
@@ -39,7 +51,8 @@ function initializeMockDatabase() {
   };
 
   mockRoles = {
-    [HOD_USER_ID]: { user_id: HOD_USER_ID, role: 'hod', is_active: true }
+    [HOD_USER_ID]: { user_id: HOD_USER_ID, role: 'hod', is_active: true },
+    [INACTIVE_HOD_USER_ID]: { user_id: INACTIVE_HOD_USER_ID, role: 'hod', is_active: false }
   };
 
   mockProfiles = {
@@ -65,6 +78,12 @@ function createSupabaseMock() {
         if (token === 'HOD_TOKEN') {
           return { data: { user: mockUsers[HOD_USER_ID] }, error: null };
         }
+        if (token === 'INACTIVE_HOD_TOKEN') {
+          return { data: { user: mockUsers[INACTIVE_HOD_USER_ID] }, error: null };
+        }
+        if (token === 'NO_ROLE_TOKEN') {
+          return { data: { user: mockUsers[NO_ROLE_USER_ID] }, error: null };
+        }
         if (token === 'STUDENT_TOKEN') {
           return { data: { user: mockUsers[STUDENT_USER_ID] }, error: null };
         }
@@ -75,7 +94,10 @@ function createSupabaseMock() {
         if (!user || password !== 'ValidPassword123') {
           return { data: null, error: { message: 'Invalid credentials' } };
         }
-        const token = user.id === HOD_USER_ID ? 'HOD_TOKEN' : 'STUDENT_TOKEN';
+        let token = 'STUDENT_TOKEN';
+        if (user.id === HOD_USER_ID) token = 'HOD_TOKEN';
+        if (user.id === INACTIVE_HOD_USER_ID) token = 'INACTIVE_HOD_TOKEN';
+        if (user.id === NO_ROLE_USER_ID) token = 'NO_ROLE_TOKEN';
         return {
           data: {
             user,
@@ -120,8 +142,10 @@ function createSupabaseMock() {
         maybeSingle: async () => {
           if (currentTable === 'aiml_user_roles') {
             const role = mockRoles[filters.user_id];
-            if (role && filters.role && role.role !== filters.role) return { data: null, error: null };
-            return { data: role || null, error: null };
+            if (!role) return { data: null, error: null };
+            if (filters.role && role.role !== filters.role) return { data: null, error: null };
+            if (filters.is_active !== undefined && role.is_active !== filters.is_active) return { data: null, error: null };
+            return { data: role, error: null };
           }
           if (currentTable === 'aiml_student_profiles') {
             const profile = Object.values(mockProfiles).find((p) => {
@@ -196,7 +220,7 @@ describe('HOD & Student Authentication and Role Management Suite', () => {
     setSupabaseAdminMock(createSupabaseMock());
   });
 
-  test('1. HOD Authentication: Logs in successfully with verified hod role', async () => {
+  test('1. Active HOD Authentication: Logs in successfully with verified hod role and is_active = true', async () => {
     const res = await fetch(`${baseUrl}/api/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -210,7 +234,47 @@ describe('HOD & Student Authentication and Role Management Suite', () => {
     assert.equal(body.token, 'HOD_TOKEN');
   });
 
-  test('2. HOD Role Verification: Rejects non-HOD user attempting HOD login', async () => {
+  test('2. Inactive HOD Rejection: Rejects login when HOD is_active is false', async () => {
+    const res = await fetch(`${baseUrl}/api/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: 'inactive.hod@mictech.ac.in', password: 'ValidPassword123' })
+    });
+
+    assert.equal(res.status, 403);
+    const body = await res.json();
+    assert.equal(body.success, false);
+    assert.match(body.error, /active HOD/i);
+  });
+
+  test('3. Missing Role Rejection: Rejects login when user has no record in aiml_user_roles', async () => {
+    const res = await fetch(`${baseUrl}/api/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: 'norole@mictech.ac.in', password: 'ValidPassword123' })
+    });
+
+    assert.equal(res.status, 403);
+    const body = await res.json();
+    assert.equal(body.success, false);
+    assert.match(body.error, /HOD/i);
+  });
+
+  test('4. Inactive HOD Route Gate: Inactive HOD token is rejected from administrative endpoints', async () => {
+    const res = await fetch(`${baseUrl}/api/hod/students`, {
+      method: 'GET',
+      headers: {
+        Authorization: 'Bearer INACTIVE_HOD_TOKEN'
+      }
+    });
+
+    assert.equal(res.status, 403);
+    const body = await res.json();
+    assert.equal(body.success, false);
+    assert.match(body.error, /HOD/i);
+  });
+
+  test('5. Non-HOD Role Verification: Rejects student attempting HOD login', async () => {
     const res = await fetch(`${baseUrl}/api/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -223,7 +287,7 @@ describe('HOD & Student Authentication and Role Management Suite', () => {
     assert.match(body.error, /HOD/i);
   });
 
-  test('3. Student Login: Authenticates using Register Number + Password', async () => {
+  test('6. Student Login: Authenticates using Register Number + Password', async () => {
     const res = await fetch(`${baseUrl}/api/auth/student-login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -237,7 +301,7 @@ describe('HOD & Student Authentication and Role Management Suite', () => {
     assert.equal(body.profile.registerNumber, '21B91A5401');
   });
 
-  test('4. Route Protection: Student token is strictly rejected from HOD routes', async () => {
+  test('7. Route Protection: Student token is strictly rejected from HOD routes', async () => {
     const res = await fetch(`${baseUrl}/api/hod/students`, {
       method: 'GET',
       headers: {
@@ -251,7 +315,7 @@ describe('HOD & Student Authentication and Role Management Suite', () => {
     assert.match(body.error, /HOD/i);
   });
 
-  test('5. Student Account Creation: HOD provisions account with mandatory initial flags', async () => {
+  test('8. Student Account Creation: HOD provisions account with mandatory initial flags', async () => {
     const res = await fetch(`${baseUrl}/api/hod/students`, {
       method: 'POST',
       headers: {
@@ -272,7 +336,7 @@ describe('HOD & Student Authentication and Role Management Suite', () => {
     assert.equal(body.student.isProfileCompleted, false);
   });
 
-  test('6. Duplicate Rejection: Rejects duplicate student Register Number', async () => {
+  test('9. Duplicate Rejection: Rejects duplicate student Register Number', async () => {
     const res = await fetch(`${baseUrl}/api/hod/students`, {
       method: 'POST',
       headers: {
@@ -291,7 +355,7 @@ describe('HOD & Student Authentication and Role Management Suite', () => {
     assert.match(body.error, /already exists/i);
   });
 
-  test('7. Compensating Rollback: Deletes Auth user if database profile insertion fails', async () => {
+  test('10. Compensating Rollback: Deletes Auth user if database profile insertion fails', async () => {
     failProfileInsert = true;
 
     const res = await fetch(`${baseUrl}/api/hod/students`, {

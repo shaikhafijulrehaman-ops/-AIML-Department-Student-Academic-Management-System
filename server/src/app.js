@@ -9,7 +9,12 @@ import { notFoundHandler, errorHandler } from './middleware/errorHandler.js';
 const app = express();
 
 // Security and utility middleware
-app.use(helmet());
+app.use(
+  helmet({
+    crossOriginResourcePolicy: { policy: 'cross-origin' },
+    crossOriginOpenerPolicy: { policy: 'unsafe-none' }
+  })
+);
 app.use(morgan(ENV.NODE_ENV === 'production' ? 'combined' : 'dev'));
 
 // CORS configuration for local development and production Vercel deployments
@@ -34,7 +39,7 @@ app.use(
     },
     credentials: true,
     methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'Accept']
+    allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'X-Requested-With', 'Cache-Control', 'Pragma']
   })
 );
 
