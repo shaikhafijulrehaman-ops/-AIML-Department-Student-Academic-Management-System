@@ -19,6 +19,7 @@ app.use(morgan(ENV.NODE_ENV === 'production' ? 'combined' : 'dev'));
 // CORS configuration for local development and production Vercel deployments
 const allowedOrigins = [
   ENV.CLIENT_ORIGIN,
+  'https://aimlhodpanel.vercel.app',
   'https://hodpanel.vercel.app',
   'https://aiml-hod.vercel.app',
   'https://aiml-students.vercel.app',
