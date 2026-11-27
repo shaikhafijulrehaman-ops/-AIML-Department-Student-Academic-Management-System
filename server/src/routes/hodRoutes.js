@@ -104,15 +104,21 @@ router.post('/students', async (req, res, next) => {
       });
     }
 
-    // 5. Assign 'student' role in aiml_user_roles
-    const { error: roleError } = await supabaseAdmin
-      .from('aiml_user_roles')
-      .insert({
-        user_id: createdAuthUserId,
-        role: 'student',
-        is_active: true,
-        created_at: new Date().toISOString()
-      });
+    // 5. Assign 'student' role in aiml_user_roles (with retry for transient network hiccups)
+    let roleError = null;
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      const res = await supabaseAdmin
+        .from('aiml_user_roles')
+        .insert({
+          user_id: createdAuthUserId,
+          role: 'student',
+          is_active: true,
+          created_at: new Date().toISOString()
+        });
+      roleError = res.error;
+      if (!roleError) break;
+      await new Promise((resolve) => setTimeout(resolve, 600));
+    }
 
     if (roleError) {
       console.error('[HODService] Role mapping failed. Rolling back student account:', createdAuthUserId, roleError.message);
