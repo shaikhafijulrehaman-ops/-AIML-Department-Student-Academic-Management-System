@@ -47,26 +47,26 @@ export const AuthProvider = ({ children }) => {
         setCurrentRole(role);
         localStorage.setItem(STORAGE_KEYS.AUTH_ROLE, role);
 
-        if (role === 'student' && res.user?.studentProfile) {
-          const profile = res.user.studentProfile;
+        const profile = res.profile || res.user?.studentProfile;
+        if (role === 'student' && profile) {
           setActiveStudent({
             id: profile.id,
-            registerNumber: profile.register_number,
-            name: profile.full_name || 'Profile Pending',
+            registerNumber: profile.register_number || profile.registerNumber,
+            name: profile.full_name || profile.fullName || 'Profile Pending',
             email: profile.email,
-            phone: profile.phone_number,
+            phone: profile.phone_number || profile.phoneNumber,
             location: profile.location,
-            year: profile.current_year ? `Year ${profile.current_year}` : 'Not Provided',
-            term: profile.current_term ? `Term ${profile.current_term}` : 'Not Provided',
-            currentYear: profile.current_year,
-            currentTerm: profile.current_term,
-            sscPercentage: profile.ssc_percentage,
-            interType: profile.qualification_type,
-            interPercentage: profile.intermediate_percentage,
-            profilePhoto: profile.profile_photo_url,
-            mustChangePassword: Boolean(profile.must_change_password),
-            onboardingStatus: profile.is_profile_completed ? 'Profile Completed' : 'Profile Pending',
-            studentStatus: profile.is_active ? 'Active' : 'Inactive',
+            year: profile.current_year ? `Year ${profile.current_year}` : (profile.currentYear ? `Year ${profile.currentYear}` : 'Not Provided'),
+            term: profile.current_term ? `Term ${profile.current_term}` : (profile.currentTerm ? `Term ${profile.currentTerm}` : 'Not Provided'),
+            currentYear: profile.current_year || profile.currentYear,
+            currentTerm: profile.current_term || profile.currentTerm,
+            sscPercentage: profile.ssc_percentage || profile.sscPercentage,
+            interType: profile.qualification_type || profile.qualificationType,
+            interPercentage: profile.intermediate_percentage || profile.intermediatePercentage,
+            profilePhoto: profile.profile_photo_url || profile.profilePhotoPath,
+            mustChangePassword: Boolean(profile.must_change_password ?? profile.mustChangePassword ?? true),
+            onboardingStatus: (profile.is_profile_completed || profile.isProfileCompleted) ? 'Profile Completed' : 'Profile Pending',
+            studentStatus: (profile.is_active || profile.isActive) ? 'Active' : 'Inactive',
             semesterRecords: profile.semester_records || []
           });
         }
@@ -180,26 +180,26 @@ export const AuthProvider = ({ children }) => {
       setCurrentRole('student');
       localStorage.setItem(STORAGE_KEYS.AUTH_ROLE, 'student');
 
-      const profile = res.user?.studentProfile;
+      const profile = res.profile || res.user?.studentProfile;
       if (profile) {
         const studentObj = {
           id: profile.id,
-          registerNumber: profile.register_number,
-          name: profile.full_name || 'Profile Pending',
+          registerNumber: profile.register_number || profile.registerNumber,
+          name: profile.full_name || profile.fullName || 'Profile Pending',
           email: profile.email,
-          phone: profile.phone_number,
+          phone: profile.phone_number || profile.phoneNumber,
           location: profile.location,
-          year: profile.current_year ? `Year ${profile.current_year}` : 'Not Provided',
-          term: profile.current_term ? `Term ${profile.current_term}` : 'Not Provided',
-          currentYear: profile.current_year,
-          currentTerm: profile.current_term,
-          sscPercentage: profile.ssc_percentage,
-          interType: profile.qualification_type,
-          interPercentage: profile.intermediate_percentage,
-          profilePhoto: profile.profile_photo_url,
-          mustChangePassword: Boolean(profile.must_change_password),
-          onboardingStatus: profile.is_profile_completed ? 'Profile Completed' : 'Profile Pending',
-          studentStatus: profile.is_active ? 'Active' : 'Inactive',
+          year: profile.current_year ? `Year ${profile.current_year}` : (profile.currentYear ? `Year ${profile.currentYear}` : 'Not Provided'),
+          term: profile.current_term ? `Term ${profile.current_term}` : (profile.currentTerm ? `Term ${profile.currentTerm}` : 'Not Provided'),
+          currentYear: profile.current_year || profile.currentYear,
+          currentTerm: profile.current_term || profile.currentTerm,
+          sscPercentage: profile.ssc_percentage || profile.sscPercentage,
+          interType: profile.qualification_type || profile.qualificationType,
+          interPercentage: profile.intermediate_percentage || profile.intermediatePercentage,
+          profilePhoto: profile.profile_photo_url || profile.profilePhotoPath,
+          mustChangePassword: Boolean(profile.must_change_password ?? profile.mustChangePassword ?? true),
+          onboardingStatus: (profile.is_profile_completed || profile.isProfileCompleted) ? 'Profile Completed' : 'Profile Pending',
+          studentStatus: (profile.is_active || profile.isActive) ? 'Active' : 'Inactive',
           semesterRecords: (profile.semester_records || []).map((r) => ({
             term: `Semester ${r.semester_number}`,
             semesterNumber: r.semester_number,
@@ -212,8 +212,8 @@ export const AuthProvider = ({ children }) => {
         return {
           success: true,
           student: studentObj,
-          mustChangePassword: Boolean(profile.must_change_password),
-          onboardingStatus: profile.is_profile_completed ? 'Profile Completed' : 'Profile Pending'
+          mustChangePassword: Boolean(profile.must_change_password ?? profile.mustChangePassword ?? true),
+          onboardingStatus: (profile.is_profile_completed || profile.isProfileCompleted) ? 'Profile Completed' : 'Profile Pending'
         };
       }
       return { success: true };

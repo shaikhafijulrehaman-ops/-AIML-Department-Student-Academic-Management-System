@@ -63,17 +63,17 @@ export default function StudentDashboardPage() {
   // Explicit Save / Cancel behaviour: No automatic saving!
   // ==========================================
   const [profileForm, setProfileForm] = useState({
-    name: activeStudent.name,
-    registerNumber: activeStudent.registerNumber,
-    email: activeStudent.email,
-    phone: activeStudent.phone,
-    location: activeStudent.location,
-    year: activeStudent.year,
-    term: activeStudent.term,
-    profilePhoto: activeStudent.profilePhoto,
+    name: activeStudent?.name || '',
+    registerNumber: activeStudent?.registerNumber || '',
+    email: activeStudent?.email || '',
+    phone: activeStudent?.phone || '',
+    location: activeStudent?.location || '',
+    year: activeStudent?.year || '',
+    term: activeStudent?.term || '',
+    profilePhoto: activeStudent?.profilePhoto || null,
   });
 
-  const [photoPreview, setPhotoPreview] = useState(activeStudent.profilePhoto);
+  const [photoPreview, setPhotoPreview] = useState(activeStudent?.profilePhoto || null);
   const [isProfileDirty, setIsProfileDirty] = useState(false);
 
   // Reset form whenever active student changes
@@ -112,24 +112,26 @@ export default function StudentDashboardPage() {
 
   const handleSaveProfile = (e) => {
     e.preventDefault();
-    updateStudentProfile(activeStudent.id, profileForm);
-    setIsProfileDirty(false);
-    setToastMessage('Profile changes saved successfully!');
-    setTimeout(() => setToastMessage(null), 3500);
+    if (activeStudent?.id) {
+      updateStudentProfile(activeStudent.id, profileForm);
+      setIsProfileDirty(false);
+      setToastMessage('Profile changes saved successfully!');
+      setTimeout(() => setToastMessage(null), 3500);
+    }
   };
 
   const handleCancelProfile = () => {
     setProfileForm({
-      name: activeStudent.name,
-      registerNumber: activeStudent.registerNumber,
-      email: activeStudent.email,
-      phone: activeStudent.phone,
-      location: activeStudent.location,
-      year: activeStudent.year,
-      term: activeStudent.term,
-      profilePhoto: activeStudent.profilePhoto,
+      name: activeStudent?.name || '',
+      registerNumber: activeStudent?.registerNumber || '',
+      email: activeStudent?.email || '',
+      phone: activeStudent?.phone || '',
+      location: activeStudent?.location || '',
+      year: activeStudent?.year || '',
+      term: activeStudent?.term || '',
+      profilePhoto: activeStudent?.profilePhoto || null,
     });
-    setPhotoPreview(activeStudent.profilePhoto);
+    setPhotoPreview(activeStudent?.profilePhoto || null);
     setIsProfileDirty(false);
   };
 
@@ -138,26 +140,26 @@ export default function StudentDashboardPage() {
   // Explicit Save / Cancel behaviour: No automatic saving!
   // ==========================================
   const [academicForm, setAcademicForm] = useState({
-    sscPercentage: activeStudent.sscPercentage,
-    interType: activeStudent.interType,
-    interPercentage: activeStudent.interPercentage,
-    semesterRecords: JSON.parse(JSON.stringify(activeStudent.semesterRecords || [])),
+    sscPercentage: activeStudent?.sscPercentage || '',
+    interType: activeStudent?.interType || 'intermediate',
+    interPercentage: activeStudent?.interPercentage || '',
+    semesterRecords: JSON.parse(JSON.stringify(activeStudent?.semesterRecords || [])),
   });
 
   const [isAcademicDirty, setIsAcademicDirty] = useState(false);
 
   useEffect(() => {
     setAcademicForm({
-      sscPercentage: activeStudent.sscPercentage,
-      interType: activeStudent.interType,
-      interPercentage: activeStudent.interPercentage,
-      semesterRecords: JSON.parse(JSON.stringify(activeStudent.semesterRecords || [])),
+      sscPercentage: activeStudent?.sscPercentage || '',
+      interType: activeStudent?.interType || 'intermediate',
+      interPercentage: activeStudent?.interPercentage || '',
+      semesterRecords: JSON.parse(JSON.stringify(activeStudent?.semesterRecords || [])),
     });
     setIsAcademicDirty(false);
   }, [activeStudent]);
 
   // Max completed semester number based on current term
-  const maxCompletedSem = getMaxCompletedSemForTerm(activeStudent.term);
+  const maxCompletedSem = getMaxCompletedSemForTerm(activeStudent?.term || '');
 
   const handleSemesterInputChange = (semNumber, field, value) => {
     setAcademicForm((prev) => {
@@ -181,18 +183,20 @@ export default function StudentDashboardPage() {
 
   const handleSaveAcademicDetails = (e) => {
     e.preventDefault();
-    updateStudentAcademicDetails(activeStudent.id, academicForm);
-    setIsAcademicDirty(false);
-    setToastMessage('Academic details saved and updated successfully!');
-    setTimeout(() => setToastMessage(null), 3500);
+    if (activeStudent?.id) {
+      updateStudentAcademicDetails(activeStudent.id, academicForm);
+      setIsAcademicDirty(false);
+      setToastMessage('Academic details saved and updated successfully!');
+      setTimeout(() => setToastMessage(null), 3500);
+    }
   };
 
   const handleCancelAcademicDetails = () => {
     setAcademicForm({
-      sscPercentage: activeStudent.sscPercentage,
-      interType: activeStudent.interType,
-      interPercentage: activeStudent.interPercentage,
-      semesterRecords: JSON.parse(JSON.stringify(activeStudent.semesterRecords || [])),
+      sscPercentage: activeStudent?.sscPercentage || '',
+      interType: activeStudent?.interType || 'intermediate',
+      interPercentage: activeStudent?.interPercentage || '',
+      semesterRecords: JSON.parse(JSON.stringify(activeStudent?.semesterRecords || [])),
     });
     setIsAcademicDirty(false);
   };
@@ -202,20 +206,36 @@ export default function StudentDashboardPage() {
   // Requests appear ONLY for the selected eligible year!
   // ==========================================
   const targetedRequests = useMemo(() => {
+    if (!activeStudent?.year) return [];
     return updateRequests.filter((r) => r.targetYear === activeStudent.year);
-  }, [updateRequests, activeStudent.year]);
+  }, [updateRequests, activeStudent?.year]);
 
   // Count only genuinely PENDING requests for the currently logged-in student
   const pendingRequestsCount = useMemo(() => {
+    if (!activeStudent) return 0;
     return targetedRequests.filter((r) => !isStudentSubmittedForRequest(activeStudent, r)).length;
   }, [targetedRequests, activeStudent, isStudentSubmittedForRequest]);
 
-  const latestAcademics = getStudentLatestAcademics(activeStudent);
+  const latestAcademics = useMemo(() => {
+    return activeStudent ? getStudentLatestAcademics(activeStudent) : {};
+  }, [activeStudent]);
 
   const handleLogout = () => {
     logout();
     navigate('/student/login');
   };
+
+  // Loading state when activeStudent is resolving
+  if (!activeStudent) {
+    return (
+      <div className="min-h-screen bg-[#E8E0CF] flex items-center justify-center p-4">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-10 h-10 border-4 border-[#3D0C1A] border-t-transparent rounded-full animate-spin" />
+          <p className="text-sm font-semibold text-[#3D0C1A]">Loading student workspace...</p>
+        </div>
+      </div>
+    );
+  }
 
   // ==========================================
   // ONBOARDING WORKFLOW GUARDS
