@@ -42,7 +42,15 @@ export const AuthProvider = ({ children }) => {
         return;
       }
 
-      const res = await api.getCurrentUser();
+      let res = await api.getCurrentUser();
+      // If token expired, attempt auto-refresh using refresh token
+      if (!res.success && api.getRefreshToken()) {
+        const refreshRes = await api.refreshAuthSession();
+        if (refreshRes.success) {
+          res = await api.getCurrentUser();
+        }
+      }
+
       if (res.success) {
         const role = res.user?.role === 'hod' ? 'admin' : 'student';
         setCurrentRole(role);
@@ -74,11 +82,17 @@ export const AuthProvider = ({ children }) => {
             mustChangePassword: Boolean(profile.must_change_password ?? profile.mustChangePassword ?? true),
             onboardingStatus: (profile.is_profile_completed || profile.isProfileCompleted) ? 'Profile Completed' : 'Profile Pending',
             studentStatus: (profile.is_active || profile.isActive) ? 'Active' : 'Inactive',
-            semesterRecords: profile.semester_records || []
+            semesterRecords: (profile.semester_records || profile.aiml_semester_records || []).map((r) => ({
+              term: `Semester ${r.semester_number}`,
+              semesterNumber: r.semester_number,
+              cgpa: r.cumulative_cgpa,
+              status: 'Updated',
+              submittedAt: r.submitted_at
+            }))
           });
         }
       } else {
-        // Token invalid or expired
+        // Token invalid or expired and refresh failed
         api.clearAuthToken();
         setCurrentRole(null);
         localStorage.removeItem(STORAGE_KEYS.AUTH_ROLE);
@@ -262,6 +276,9 @@ export const AuthProvider = ({ children }) => {
   const changeStudentPassword = async (studentId, newPassword) => {
     const res = await api.changeInitialPassword(newPassword);
     if (res.success) {
+      if (res.token) {
+        api.setAuthToken(res.token, res.refreshToken);
+      }
       setActiveStudent((prev) => (prev ? { ...prev, mustChangePassword: false } : prev));
       return { success: true };
     }
@@ -273,14 +290,32 @@ export const AuthProvider = ({ children }) => {
     const targetId = studentId || activeStudent?.id;
     const res = await api.completeStudentProfile(targetId, profileData);
     if (res.success) {
-      setActiveStudent((prev) => ({
-        ...prev,
-        ...profileData,
-        onboardingStatus: 'Profile Completed',
-        studentStatus: 'Active',
-        mustChangePassword: false
-      }));
-      return { success: true };
+      const serverProfile = res.data || {};
+      setActiveStudent((prev) => {
+        const cy = serverProfile.currentYear || serverProfile.current_year || profileData.currentYear || prev?.currentYear;
+        const ct = serverProfile.currentTerm || serverProfile.current_term || profileData.currentTerm || prev?.currentTerm;
+        return {
+          ...prev,
+          name: serverProfile.fullName || serverProfile.full_name || profileData.fullName || profileData.name || prev?.name,
+          email: serverProfile.email || profileData.email || prev?.email,
+          phone: serverProfile.phoneNumber || serverProfile.phone_number || profileData.phone || profileData.phoneNumber || prev?.phone,
+          location: serverProfile.location || profileData.location || prev?.location,
+          currentYear: cy,
+          currentTerm: ct,
+          year: cy ? getAcademicYearDisplay(cy) : 'Not Provided',
+          batch: cy ? getBatchLabel(cy) : 'Academic Batch Pending',
+          term: (cy && ct) ? `${cy}-${ct}` : 'Not Provided',
+          sscPercentage: serverProfile.sscPercentage || serverProfile.ssc_percentage || profileData.sscPercentage || prev?.sscPercentage,
+          interType: serverProfile.qualificationType || serverProfile.qualification_type || profileData.qualificationType || profileData.interType || prev?.interType,
+          interPercentage: serverProfile.intermediatePercentage || serverProfile.intermediate_percentage || profileData.intermediatePercentage || profileData.interPercentage || prev?.interPercentage,
+          hasBacklogs: serverProfile.hasBacklogs ?? serverProfile.has_backlogs ?? profileData.hasBacklogs ?? prev?.hasBacklogs,
+          backlogCount: serverProfile.backlogCount ?? serverProfile.backlog_count ?? profileData.backlogCount ?? prev?.backlogCount,
+          onboardingStatus: 'Profile Completed',
+          studentStatus: 'Active',
+          mustChangePassword: false
+        };
+      });
+      return { success: true, data: res.data };
     }
     return { success: false, error: res.error || 'Profile completion failed' };
   };

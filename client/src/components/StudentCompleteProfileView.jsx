@@ -578,9 +578,9 @@ export default function StudentCompleteProfileView({ student, onCompleteProfile,
                   onChange={(e) => handleYearChange(e.target.value)}
                   className="w-full p-2.5 rounded-xl border border-slate-300 bg-white font-bold text-slate-900 outline-none focus:ring-2 focus:ring-[#5E8881]/20 focus:border-[#5E8881]"
                 >
-                  <option value="2nd Year">Second Year (2nd Year)</option>
-                  <option value="3rd Year">Third Year (3rd Year)</option>
-                  <option value="4th Year">Fourth Year (4th Year)</option>
+                  <option value="2nd Year">2nd Year (2025 Batch)</option>
+                  <option value="3rd Year">3rd Year (2024 Batch)</option>
+                  <option value="4th Year">4th Year (2023 Batch)</option>
                 </select>
               </div>
 

@@ -15,21 +15,89 @@ export const API_BASE_URL = RAW_API_BASE_URL !== undefined
   : (import.meta.env.PROD ? DEFAULT_RENDER_BACKEND_URL : '');
 
 const TOKEN_KEY = 'aiml_auth_token';
+const REFRESH_TOKEN_KEY = 'aiml_refresh_token';
 
 export const getAuthToken = () => {
   return localStorage.getItem(TOKEN_KEY) || '';
 };
 
-export const setAuthToken = (token) => {
+export const getRefreshToken = () => {
+  return localStorage.getItem(REFRESH_TOKEN_KEY) || '';
+};
+
+export const setAuthToken = (token, refreshToken = null) => {
   if (token) {
     localStorage.setItem(TOKEN_KEY, token);
+    if (refreshToken) {
+      localStorage.setItem(REFRESH_TOKEN_KEY, refreshToken);
+    }
+    // Synchronize Supabase Client session for RLS queries and auto-refresh
+    if (supabase?.auth?.setSession) {
+      const activeRefresh = refreshToken || localStorage.getItem(REFRESH_TOKEN_KEY);
+      if (activeRefresh) {
+        supabase.auth.setSession({
+          access_token: token,
+          refresh_token: activeRefresh
+        }).catch(() => {});
+      }
+    }
   } else {
     localStorage.removeItem(TOKEN_KEY);
+    if (refreshToken === null) {
+      localStorage.removeItem(REFRESH_TOKEN_KEY);
+    }
   }
 };
 
 export const clearAuthToken = () => {
   localStorage.removeItem(TOKEN_KEY);
+  localStorage.removeItem(REFRESH_TOKEN_KEY);
+  if (supabase?.auth?.signOut) {
+    supabase.auth.signOut().catch(() => {});
+  }
+};
+
+let refreshPromise = null;
+export const refreshAuthSession = async () => {
+  if (refreshPromise) return refreshPromise;
+  refreshPromise = (async () => {
+    try {
+      const refreshToken = getRefreshToken();
+      if (!refreshToken) {
+        return { success: false, error: 'No refresh token available.' };
+      }
+
+      // Try backend endpoint first
+      const res = await fetch(API_BASE_URL ? `${API_BASE_URL}/api/auth/refresh` : '/api/auth/refresh', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        body: JSON.stringify({ refreshToken })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.token) {
+        setAuthToken(data.token, data.refreshToken || refreshToken);
+        return { success: true, token: data.token, refreshToken: data.refreshToken };
+      }
+
+      // Fallback: direct Supabase client refresh
+      if (supabase?.auth?.refreshSession) {
+        const { data: sData, error: sErr } = await supabase.auth.refreshSession({ refresh_token: refreshToken });
+        if (!sErr && sData?.session?.access_token) {
+          setAuthToken(sData.session.access_token, sData.session.refresh_token);
+          return { success: true, token: sData.session.access_token, refreshToken: sData.session.refresh_token };
+        }
+      }
+
+      clearAuthToken();
+      return { success: false, error: data.error || 'Session refresh failed.' };
+    } catch (err) {
+      clearAuthToken();
+      return { success: false, error: err.message || 'Session refresh error.' };
+    } finally {
+      refreshPromise = null;
+    }
+  })();
+  return refreshPromise;
 };
 
 const request = async (endpoint, options = {}) => {
@@ -50,6 +118,20 @@ const request = async (endpoint, options = {}) => {
 
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
+      // If 401 Unauthorized and not retried yet, try token refresh
+      if (res.status === 401 && !options._retried && getRefreshToken()) {
+        const refreshRes = await refreshAuthSession();
+        if (refreshRes.success && refreshRes.token) {
+          return request(endpoint, {
+            ...options,
+            _retried: true,
+            headers: {
+              ...(options.headers || {}),
+              'Authorization': `Bearer ${refreshRes.token}`
+            }
+          });
+        }
+      }
       const errorMsg = data.error || data.message || `Request failed with status ${res.status}`;
       return { success: false, status: res.status, error: errorMsg, code: data.code };
     }
@@ -80,7 +162,7 @@ export const loginHOD = async ({ email, password }) => {
     body: JSON.stringify({ email, password })
   });
   if (res.success && res.token) {
-    setAuthToken(res.token);
+    setAuthToken(res.token, res.refreshToken);
     return res;
   }
   // Return server response directly if it responded with an authentication status (e.g. 401, 403, 400)
@@ -103,7 +185,8 @@ export const loginHOD = async ({ email, password }) => {
     }
 
     const token = authData.session.access_token;
-    setAuthToken(token);
+    const refreshToken = authData.session.refresh_token;
+    setAuthToken(token, refreshToken);
 
     // Verify HOD role in database
     const { data: roleRecord, error: roleError } = await supabase
@@ -125,6 +208,7 @@ export const loginHOD = async ({ email, password }) => {
       success: true,
       message: 'HOD authenticated successfully.',
       token,
+      refreshToken,
       user: {
         id: authData.user.id,
         email: authData.user.email,
@@ -146,7 +230,7 @@ export const loginStudent = async ({ registerNumber, password }) => {
     body: JSON.stringify({ registerNumber: cleanRegNo, password })
   });
   if (res.success && res.token) {
-    setAuthToken(res.token);
+    setAuthToken(res.token, res.refreshToken);
     return res;
   }
   // Return server response directly if it responded with an authentication status (e.g. 401, 403, 400)
@@ -170,7 +254,8 @@ export const loginStudent = async ({ registerNumber, password }) => {
     }
 
     const token = authData.session.access_token;
-    setAuthToken(token);
+    const refreshToken = authData.session.refresh_token;
+    setAuthToken(token, refreshToken);
 
     // Fetch and strictly verify student profile
     const { data: profile, error: profileError } = await supabase
@@ -349,10 +434,14 @@ export const fetchAnalytics = async () => {
 
 export const changeInitialPassword = async (newPassword) => {
   // Always invoke backend password change endpoint to verify token and sync database flags
-  return request('/api/student/change-initial-password', {
+  const res = await request('/api/student/change-initial-password', {
     method: 'POST',
     body: JSON.stringify({ newPassword })
   });
+  if (res.success && res.token) {
+    setAuthToken(res.token, res.refreshToken);
+  }
+  return res;
 };
 
 export const completeStudentProfile = async (studentProfileId, profileData) => {
@@ -370,29 +459,28 @@ export const updateStudentProfile = async (profileData) => {
 };
 
 export const uploadStudentPhoto = async (fileOrFormData) => {
-  const token = getAuthToken();
   const url = API_BASE_URL ? `${API_BASE_URL}/api/student/photo` : '/api/student/photo';
 
-  let body;
-  let headers = {
-    'Accept': 'application/json',
-    ...(token ? { 'Authorization': `Bearer ${token}` } : {})
-  };
+  const makeAttempt = async (authToken) => {
+    let body;
+    let headers = {
+      'Accept': 'application/json',
+      ...(authToken ? { 'Authorization': `Bearer ${authToken}` } : {})
+    };
 
-  if (fileOrFormData instanceof FormData) {
-    body = fileOrFormData;
-  } else if (typeof fileOrFormData === 'object' && fileOrFormData !== null && (fileOrFormData instanceof File || fileOrFormData instanceof Blob)) {
-    const formData = new FormData();
-    formData.append('photo', fileOrFormData);
-    body = formData;
-  } else if (typeof fileOrFormData === 'string') {
-    headers['Content-Type'] = 'application/json';
-    body = JSON.stringify({ photoData: fileOrFormData });
-  } else {
-    return { success: false, error: 'Invalid photo payload provided.' };
-  }
+    if (fileOrFormData instanceof FormData) {
+      body = fileOrFormData;
+    } else if (typeof fileOrFormData === 'object' && fileOrFormData !== null && (fileOrFormData instanceof File || fileOrFormData instanceof Blob)) {
+      const formData = new FormData();
+      formData.append('photo', fileOrFormData);
+      body = formData;
+    } else if (typeof fileOrFormData === 'string') {
+      headers['Content-Type'] = 'application/json';
+      body = JSON.stringify({ photoData: fileOrFormData });
+    } else {
+      return { success: false, error: 'Invalid photo payload provided.' };
+    }
 
-  try {
     const res = await fetch(url, {
       method: 'POST',
       headers,
@@ -407,6 +495,20 @@ export const uploadStudentPhoto = async (fileOrFormData) => {
       };
     }
     return { success: true, ...data };
+  };
+
+  try {
+    let token = getAuthToken();
+    let result = await makeAttempt(token);
+
+    // If 401 Unauthorized, automatically attempt token refresh and retry once
+    if (!result.success && result.status === 401 && getRefreshToken()) {
+      const refreshRes = await refreshAuthSession();
+      if (refreshRes.success && refreshRes.token) {
+        result = await makeAttempt(refreshRes.token);
+      }
+    }
+    return result;
   } catch (err) {
     return { success: false, error: err.message || 'Network error uploading profile photo.' };
   }

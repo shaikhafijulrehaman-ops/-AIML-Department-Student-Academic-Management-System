@@ -154,7 +154,43 @@ function createMockSupabaseAdmin() {
         if (token === 'token-ready') {
           return { data: { user: { id: USER_ID_READY, email: 'ready@mictech.ac.in' } }, error: null };
         }
+        if (token.startsWith('fresh-token') || token === 'refreshed-access-token') {
+          return { data: { user: { id: USER_ID_A, email: 'student.a@mictech.ac.in' } }, error: null };
+        }
         return { data: { user: null }, error: { message: 'Unknown token.' } };
+      },
+      signInWithPassword: async ({ email, password }) => {
+        if (!email || !password || password === 'invalid-password') {
+          return { data: { user: null, session: null }, error: { message: 'Invalid login credentials' } };
+        }
+        return {
+          data: {
+            user: { id: USER_ID_A, email },
+            session: {
+              access_token: 'fresh-token-' + Date.now(),
+              refresh_token: 'fresh-refresh-' + Date.now(),
+              expires_at: Math.floor(Date.now() / 1000) + 3600,
+              expires_in: 3600
+            }
+          },
+          error: null
+        };
+      },
+      refreshSession: async ({ refresh_token }) => {
+        if (!refresh_token || refresh_token === 'invalid-refresh') {
+          return { data: { session: null }, error: { message: 'Invalid refresh token' } };
+        }
+        return {
+          data: {
+            session: {
+              access_token: 'refreshed-access-token',
+              refresh_token: 'refreshed-refresh-token',
+              expires_at: Math.floor(Date.now() / 1000) + 3600,
+              expires_in: 3600
+            }
+          },
+          error: null
+        };
       },
       admin: {
         updateUserById: async (userId, attributes) => {
@@ -332,6 +368,64 @@ describe('Student Authentication & Profile Hardening Suite', () => {
 
       assert.equal(res.status, 200);
       assert.equal(lastAdminUpdateCall.attributes.password, passwordWithSpaces);
+    });
+
+    test('Password update returns replacement token, refresh token, and session metadata', async () => {
+      const res = await fetch(`${baseUrl}/api/student/change-initial-password`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: 'Bearer token-student-a'
+        },
+        body: JSON.stringify({
+          newPassword: 'BrandNewSecurePassword123!'
+        })
+      });
+
+      assert.equal(res.status, 200);
+      const data = await res.json();
+      assert.equal(data.success, true);
+      assert.ok(data.token, 'Should return replacement access token');
+      assert.ok(data.refreshToken, 'Should return replacement refresh token');
+      assert.equal(data.data.mustChangePassword, false);
+    });
+
+    test('Session refresh endpoint POST /api/auth/refresh returns new tokens for valid refresh token', async () => {
+      const res = await fetch(`${baseUrl}/api/auth/refresh`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          refreshToken: 'valid-test-refresh-token'
+        })
+      });
+
+      assert.equal(res.status, 200);
+      const data = await res.json();
+      assert.equal(data.success, true);
+      assert.equal(data.token, 'refreshed-access-token');
+      assert.equal(data.refreshToken, 'refreshed-refresh-token');
+    });
+
+    test('Session refresh endpoint POST /api/auth/refresh rejects missing or invalid refresh token with 400/401', async () => {
+      const res1 = await fetch(`${baseUrl}/api/auth/refresh`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({})
+      });
+      assert.equal(res1.status, 400);
+
+      const res2 = await fetch(`${baseUrl}/api/auth/refresh`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ refreshToken: 'invalid-refresh' })
+      });
+      assert.equal(res2.status, 401);
     });
 
     test('Whitespace-only or empty passwords are rejected with 400', async () => {

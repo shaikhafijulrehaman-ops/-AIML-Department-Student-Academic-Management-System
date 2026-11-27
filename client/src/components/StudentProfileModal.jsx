@@ -393,7 +393,7 @@ export default function StudentProfileModal({
                           <span>{student.backlogCount || 1} Active Backlog{(student.backlogCount || 1) > 1 ? 's' : ''}</span>
                         </span>
                       ) : (
-                        <span className="text-slate-400 italic text-xs">Not Provided (Legacy Profile)</span>
+                        <span className="text-slate-400 italic text-xs">Not Provided</span>
                       )}
                     </div>
                   </div>

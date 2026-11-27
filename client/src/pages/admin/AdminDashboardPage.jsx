@@ -849,15 +849,15 @@ export default function AdminDashboardPage() {
         {/* ============================================================== */}
         {activeTab === 'overview' && (
           <div className="space-y-6">
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-3 sm:gap-4">
               <div className="bg-white rounded-2xl p-4 border border-[#C1C8B7] shadow-sm">
                 <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">
                   Total Students
                 </span>
                 <div className="text-2xl sm:text-3xl font-extrabold text-[#4A192B] mt-1">
-                  {students.length}
+                  {students.filter(s => s.studentStatus === 'Active' || s.is_active !== false).length}
                 </div>
-                <span className="text-[10px] text-slate-500">Department Records</span>
+                <span className="text-[10px] text-slate-500">Active Directory Records</span>
               </div>
 
               <div className="bg-white rounded-2xl p-4 border border-[#C1C8B7] shadow-sm">
@@ -865,7 +865,7 @@ export default function AdminDashboardPage() {
                   2nd Year
                 </span>
                 <div className="text-2xl sm:text-3xl font-extrabold text-slate-800 mt-1">
-                  {students.filter(s => s.currentYear === 2 || s.current_year === 2 || (s.year && String(s.year).includes('2'))).length}
+                  {students.filter(s => (s.studentStatus === 'Active' || s.is_active !== false) && (s.currentYear === 2 || s.current_year === 2 || (s.year && String(s.year).includes('2')))).length}
                 </div>
                 <span className="text-[10px] text-slate-500 font-semibold">{ACADEMIC_YEAR_TO_BATCH[2]}</span>
               </div>
@@ -875,7 +875,7 @@ export default function AdminDashboardPage() {
                   3rd Year
                 </span>
                 <div className="text-2xl sm:text-3xl font-extrabold text-slate-800 mt-1">
-                  {students.filter(s => s.currentYear === 3 || s.current_year === 3 || (s.year && String(s.year).includes('3'))).length}
+                  {students.filter(s => (s.studentStatus === 'Active' || s.is_active !== false) && (s.currentYear === 3 || s.current_year === 3 || (s.year && String(s.year).includes('3')))).length}
                 </div>
                 <span className="text-[10px] text-slate-500 font-semibold">{ACADEMIC_YEAR_TO_BATCH[3]}</span>
               </div>
@@ -885,19 +885,29 @@ export default function AdminDashboardPage() {
                   4th Year
                 </span>
                 <div className="text-2xl sm:text-3xl font-extrabold text-slate-800 mt-1">
-                  {students.filter(s => s.currentYear === 4 || s.current_year === 4 || (s.year && String(s.year).includes('4'))).length}
+                  {students.filter(s => (s.studentStatus === 'Active' || s.is_active !== false) && (s.currentYear === 4 || s.current_year === 4 || (s.year && String(s.year).includes('4')))).length}
                 </div>
                 <span className="text-[10px] text-slate-500 font-semibold">{ACADEMIC_YEAR_TO_BATCH[4]}</span>
               </div>
 
               <div className="bg-white rounded-2xl p-4 border border-[#C1C8B7] shadow-sm">
-                <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">
-                  Active Requests
+                <span className="text-[11px] font-bold text-amber-700 uppercase tracking-wider block">
+                  Pending Onboarding
                 </span>
-                <div className="text-2xl sm:text-3xl font-extrabold text-slate-800 mt-1">
-                  {updateRequests.length}
+                <div className="text-2xl sm:text-3xl font-extrabold text-amber-800 mt-1">
+                  {students.filter(s => s.onboardingStatus === 'Profile Pending').length}
                 </div>
-                <span className="text-[10px] text-slate-500">Update Cycles</span>
+                <span className="text-[10px] text-amber-700 font-semibold">Incomplete Profiles</span>
+              </div>
+
+              <div className="bg-white rounded-2xl p-4 border border-[#C1C8B7] shadow-sm">
+                <span className="text-[11px] font-bold text-emerald-700 uppercase tracking-wider block">
+                  Profile Completed
+                </span>
+                <div className="text-2xl sm:text-3xl font-extrabold text-emerald-800 mt-1">
+                  {students.filter(s => s.onboardingStatus === 'Profile Completed').length}
+                </div>
+                <span className="text-[10px] text-emerald-700 font-semibold">Fully Registered</span>
               </div>
 
               <div className="bg-white rounded-2xl p-4 border border-[#FF6B1A]/40 shadow-sm relative overflow-hidden">

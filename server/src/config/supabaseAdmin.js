@@ -34,7 +34,8 @@ const realSupabaseAdmin = (supabaseUrl && supabaseSecretKey)
 let adminOverride = null;
 
 /**
- * Factory for creating ephemeral, isolated clients for password verification.
+ * Factory for creating ephemeral, isolated clients for password verification and session refresh.
+ * Uses dedicated anon/publishable key and non-persistent session configuration.
  * Prevents user signInWithPassword calls from mutating the privileged admin client session.
  */
 export function createAuthClient() {
@@ -42,7 +43,7 @@ export function createAuthClient() {
     return adminOverride;
   }
   const url = ENV.SUPABASE_URL || process.env.SUPABASE_URL;
-  const key = ENV.SUPABASE_SECRET_KEY || process.env.SUPABASE_SECRET_KEY;
+  const key = ENV.SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_PUBLISHABLE_KEY || ENV.SUPABASE_SECRET_KEY;
   if (!url || !key) return null;
   return createClient(url, key, {
     auth: {

@@ -14,6 +14,11 @@ export const ENV = {
   PORT: process.env.PORT || 5000,
   CLIENT_ORIGIN: process.env.CLIENT_ORIGIN || 'http://localhost:5173',
   SUPABASE_URL: process.env.SUPABASE_URL || 'https://kynkutbcdsmkkqdbpzdn.supabase.co',
+  SUPABASE_ANON_KEY:
+    process.env.SUPABASE_ANON_KEY ||
+    process.env.SUPABASE_PUBLISHABLE_KEY ||
+    process.env.VITE_SUPABASE_PUBLISHABLE_KEY ||
+    'sb_publishable_E7_sM400NF6oGpe9VGQEnQ_Zuov8N9l',
   SUPABASE_SECRET_KEY: 
     process.env.SUPABASE_SERVICE_ROLE_KEY || 
     process.env.SUPABASE_SECRET_KEY || 

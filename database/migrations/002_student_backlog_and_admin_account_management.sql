@@ -131,3 +131,14 @@ IS 'Secure backend service-role validated operation for marking student onboardi
 
 REVOKE ALL ON FUNCTION public.aiml_complete_student_profile(UUID) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.aiml_complete_student_profile(UUID) TO service_role;
+
+-- 5. Column-level privilege updates for authenticated student role on new and updated columns
+GRANT UPDATE (
+  has_backlogs,
+  backlog_count,
+  updated_at
+) ON public.aiml_student_profiles TO authenticated;
+
+-- Maintain full privileges for backend service_role
+GRANT ALL ON public.aiml_student_profiles TO service_role;
+

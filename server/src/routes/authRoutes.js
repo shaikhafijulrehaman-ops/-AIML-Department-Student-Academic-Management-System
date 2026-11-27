@@ -67,6 +67,9 @@ router.post('/login', async (req, res, next) => {
       success: true,
       message: 'HOD authenticated successfully.',
       token: authData.session.access_token,
+      refreshToken: authData.session.refresh_token,
+      expiresAt: authData.session.expires_at,
+      expiresIn: authData.session.expires_in,
       user: {
         id: authUser.id,
         email: authUser.email,
@@ -162,6 +165,9 @@ router.post('/student-login', async (req, res, next) => {
       success: true,
       message: 'Student authenticated successfully.',
       token: authData.session.access_token,
+      refreshToken: authData.session.refresh_token,
+      expiresAt: authData.session.expires_at,
+      expiresIn: authData.session.expires_in,
       user: {
         id: authUser.id,
         role: 'student',
@@ -256,6 +262,42 @@ router.get('/me', requireAuth, async (req, res, next) => {
         profile_photo_url: signedPhotoUrl,
         profilePhotoUrl: signedPhotoUrl
       } : null
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * POST /api/auth/refresh
+ * Securely refreshes an expired access token using the user's refresh token.
+ */
+router.post('/refresh', async (req, res, next) => {
+  try {
+    const { refreshToken } = req.body;
+    if (!refreshToken || typeof refreshToken !== 'string') {
+      return res.status(400).json({
+        success: false,
+        error: 'Refresh token is required.'
+      });
+    }
+
+    const authClient = createAuthClient() || supabaseAdmin;
+    const { data, error } = await authClient.auth.refreshSession({ refresh_token: refreshToken });
+
+    if (error || !data?.session) {
+      return res.status(401).json({
+        success: false,
+        error: 'Unauthorized: Invalid or expired refresh token.'
+      });
+    }
+
+    return res.json({
+      success: true,
+      token: data.session.access_token,
+      refreshToken: data.session.refresh_token,
+      expiresAt: data.session.expires_at,
+      expiresIn: data.session.expires_in
     });
   } catch (err) {
     next(err);

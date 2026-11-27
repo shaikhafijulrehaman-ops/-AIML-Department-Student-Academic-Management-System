@@ -1,7 +1,8 @@
 import { Router } from 'express';
 import crypto from 'crypto';
 import multer from 'multer';
-import { supabaseAdmin, isSupabaseAdminReady } from '../config/supabaseAdmin.js';
+import { supabaseAdmin, isSupabaseAdminReady, createAuthClient } from '../config/supabaseAdmin.js';
+import { getDeterministicStudentEmail } from '../middleware/authMiddleware.js';
 
 const router = Router();
 
@@ -240,15 +241,46 @@ router.post('/change-initial-password', requireAuth, async (req, res, next) => {
       );
       return res.status(500).json({
         success: false,
-        error: 'Password updated successfully in authentication service, but failed to update security status. Please contact support.',
+        error: 'Password updated successfully in authentication service, but failed to update security status. Please retry or contact support.',
         code: 'AUTH_UPDATED_FLAG_SYNC_FAILED'
       });
     }
 
-    // Return sanitized status
+    // Step 6: Immediately establish a brand new authenticated session with the new credentials.
+    // Changing the password via Admin Auth revokes previously issued tokens in Supabase GoTrue.
+    let newAccessToken = null;
+    let newRefreshToken = null;
+    let newExpiresAt = null;
+    let newExpiresIn = null;
+
+    try {
+      const internalEmail = getDeterministicStudentEmail(profile.register_number);
+      const authClient = createAuthClient() || supabaseAdmin;
+      if (authClient?.auth?.signInWithPassword) {
+        const { data: newAuthData, error: newAuthError } = await authClient.auth.signInWithPassword({
+          email: internalEmail,
+          password: newPassword
+        });
+
+        if (!newAuthError && newAuthData?.session) {
+          newAccessToken = newAuthData.session.access_token;
+          newRefreshToken = newAuthData.session.refresh_token;
+          newExpiresAt = newAuthData.session.expires_at;
+          newExpiresIn = newAuthData.session.expires_in;
+        }
+      }
+    } catch (sessionErr) {
+      console.warn('[StudentAuth] Notice: Could not create immediate replacement session:', sessionErr.message);
+    }
+
+    // Return sanitized status and newly active tokens
     return res.json({
       success: true,
       message: 'Initial password successfully changed. You may now complete your profile.',
+      token: newAccessToken || req.token,
+      refreshToken: newRefreshToken || null,
+      expiresAt: newExpiresAt,
+      expiresIn: newExpiresIn,
       data: {
         mustChangePassword: false,
         isProfileCompleted: updatedProfile.is_profile_completed
