@@ -115,6 +115,7 @@ function resetMockState() {
 
       const builder = {
         select: (cols) => builder,
+        order: (col, opts) => builder,
         eq: (col, val) => {
           filters[col] = val;
           return builder;

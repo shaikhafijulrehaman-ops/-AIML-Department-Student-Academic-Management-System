@@ -574,7 +574,7 @@ router.post('/complete-profile', requireAuth, async (req, res, next) => {
       console.error('[StudentService] aiml_complete_student_profile RPC failed for profile:', studentProfileId, rpcError.message);
       return res.status(500).json({
         success: false,
-        error: 'Failed to finalize profile completion. Please check provided details and try again.'
+        error: rpcError.message || 'Failed to finalize profile completion. Please check provided details and try again.'
       });
     }
 
@@ -773,11 +773,19 @@ router.get('/profile', requireAuth, async (req, res, next) => {
       signedUrl = sData?.signedUrl || null;
     }
 
+    // Fetch student's validated semester records from aiml_semester_records
+    const { data: semRecords } = await supabaseAdmin
+      .from('aiml_semester_records')
+      .select('id, semester_number, cumulative_cgpa, created_at, updated_at')
+      .eq('student_profile_id', profile.id)
+      .order('semester_number', { ascending: true });
+
     return res.json({
       success: true,
       data: {
         ...profile,
-        profile_photo_url: signedUrl
+        profile_photo_url: signedUrl,
+        semester_records: semRecords || []
       }
     });
   } catch (err) {
@@ -839,29 +847,39 @@ router.put('/profile', requireAuth, async (req, res, next) => {
       if (locVal) updatePayload.location = locVal;
     }
 
-    // Academic standing: Only allowed during onboarding if profile is not completed yet!
-    // If profile is already completed, the trigger locks current_year/current_term.
-    if (!profile.is_profile_completed) {
-      if (req.body.currentYear !== undefined || req.body.current_year !== undefined || req.body.year !== undefined) {
-        const rawY = req.body.currentYear ?? req.body.current_year ?? req.body.year;
-        const yNum = typeof rawY === 'number' ? rawY : parseInt(String(rawY || '').replace(/\D/g, ''), 10);
-        if (!isNaN(yNum) && yNum >= 1 && yNum <= 4) {
-          updatePayload.current_year = yNum;
-        }
+    // Academic standing: Students can select and update their current academic year and semester/term
+    if (req.body.currentYear !== undefined || req.body.current_year !== undefined || req.body.year !== undefined) {
+      const rawY = req.body.currentYear ?? req.body.current_year ?? req.body.year;
+      const yNum = typeof rawY === 'number' ? rawY : parseInt(String(rawY || '').replace(/\D/g, ''), 10);
+      if (!isNaN(yNum) && yNum >= 2 && yNum <= 4) {
+        updatePayload.current_year = yNum;
+        // Batch mapping: 2nd Year -> 2025, 3rd Year -> 2024, 4th Year -> 2023
+        const batchYears = { 2: 2025, 3: 2024, 4: 2023 };
+        updatePayload.admission_year = batchYears[yNum] || (2027 - yNum);
+      } else if (!isNaN(yNum) && (yNum < 2 || yNum > 4)) {
+        return res.status(400).json({
+          success: false,
+          error: 'Academic year must be between 2 (2nd Year) and 4 (4th Year).'
+        });
       }
+    }
 
-      if (req.body.currentTerm !== undefined || req.body.current_term !== undefined || req.body.term !== undefined) {
-        const rawT = req.body.currentTerm ?? req.body.current_term ?? req.body.term;
-        let tNum;
-        if (typeof rawT === 'number') {
-          tNum = rawT;
-        } else {
-          const s = String(rawT || '').trim();
-          tNum = s.includes('-') ? parseInt(s.split('-')[1], 10) : parseInt(s.replace(/\D/g, ''), 10);
-        }
-        if (!isNaN(tNum) && tNum >= 1 && tNum <= 2) {
-          updatePayload.current_term = tNum;
-        }
+    if (req.body.currentTerm !== undefined || req.body.current_term !== undefined || req.body.term !== undefined) {
+      const rawT = req.body.currentTerm ?? req.body.current_term ?? req.body.term;
+      let tNum;
+      if (typeof rawT === 'number') {
+        tNum = rawT;
+      } else {
+        const s = String(rawT || '').trim();
+        tNum = s.includes('-') ? parseInt(s.split('-')[1], 10) : parseInt(s.replace(/\D/g, ''), 10);
+      }
+      if (!isNaN(tNum) && (tNum === 1 || tNum === 2)) {
+        updatePayload.current_term = tNum;
+      } else if (!isNaN(tNum) && (tNum < 1 || tNum > 2)) {
+        return res.status(400).json({
+          success: false,
+          error: 'Academic term must be 1 (Term 1) or 2 (Term 2).'
+        });
       }
     }
 
@@ -943,6 +961,10 @@ router.put('/profile', requireAuth, async (req, res, next) => {
 
     // Process semesterRecords if provided
     if (Array.isArray(req.body.semesterRecords)) {
+      const effectiveYear = updatedProfile.current_year ?? profile.current_year;
+      const effectiveTerm = updatedProfile.current_term ?? profile.current_term;
+      const maxCompletedSem = ((effectiveYear - 1) * 2) + effectiveTerm - 1;
+
       const recordsToUpsert = [];
       for (const rec of req.body.semesterRecords) {
         const semNum = parseInt(rec.semesterNumber ?? rec.semNumber ?? (String(rec.term || '').replace(/\D/g, '')), 10);
@@ -950,24 +972,49 @@ router.put('/profile', requireAuth, async (req, res, next) => {
           const rawCgpa = rec.cgpa ?? rec.cumulativeCgpa;
           if (rawCgpa !== null && rawCgpa !== undefined && rawCgpa !== '') {
             const cgpaNum = parseFloat(rawCgpa);
-            if (!isNaN(cgpaNum) && cgpaNum >= 0 && cgpaNum <= 10) {
-              recordsToUpsert.push({
-                student_profile_id: profile.id,
-                semester_number: semNum,
-                cumulative_cgpa: cgpaNum,
-                updated_at: new Date().toISOString()
+            if (isNaN(cgpaNum) || cgpaNum < 0 || cgpaNum > 10) {
+              return res.status(400).json({
+                success: false,
+                error: `Cumulative CGPA for Semester ${semNum} must be between 0.00 and 10.00.`
               });
             }
+            if (semNum > maxCompletedSem) {
+              return res.status(400).json({
+                success: false,
+                error: `Semester ${semNum} is an ongoing or future semester. Maximum completed semester eligible for recording is Semester ${maxCompletedSem}.`
+              });
+            }
+            recordsToUpsert.push({
+              student_profile_id: profile.id,
+              semester_number: semNum,
+              cumulative_cgpa: Math.round(cgpaNum * 100) / 100,
+              updated_at: new Date().toISOString()
+            });
           }
         }
       }
 
       if (recordsToUpsert.length > 0) {
-        await supabaseAdmin
+        const { error: upsertError } = await supabaseAdmin
           .from('aiml_semester_records')
           .upsert(recordsToUpsert, { onConflict: 'student_profile_id, semester_number' });
+
+        if (upsertError) {
+          console.error('[StudentProfile] Failed to upsert semester records:', upsertError.message);
+          return res.status(500).json({
+            success: false,
+            error: 'Failed to persist semester records. Please try again.'
+          });
+        }
       }
     }
+
+    // Refetch latest semester records from database
+    const { data: refreshedSemRecords } = await supabaseAdmin
+      .from('aiml_semester_records')
+      .select('id, semester_number, cumulative_cgpa, created_at, updated_at')
+      .eq('student_profile_id', profile.id)
+      .order('semester_number', { ascending: true });
 
     // Generate signed URL if photo exists
     let signedUrl = null;
@@ -983,7 +1030,8 @@ router.put('/profile', requireAuth, async (req, res, next) => {
       message: 'Student profile updated successfully.',
       data: {
         ...updatedProfile,
-        profile_photo_url: signedUrl
+        profile_photo_url: signedUrl,
+        semester_records: refreshedSemRecords || []
       }
     });
   } catch (err) {

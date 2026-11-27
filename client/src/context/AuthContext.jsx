@@ -84,10 +84,11 @@ export const AuthProvider = ({ children }) => {
             studentStatus: (profile.is_active || profile.isActive) ? 'Active' : 'Inactive',
             semesterRecords: (profile.semester_records || profile.aiml_semester_records || []).map((r) => ({
               term: `Semester ${r.semester_number}`,
+              semNumber: r.semester_number,
               semesterNumber: r.semester_number,
               cgpa: r.cumulative_cgpa,
-              status: 'Updated',
-              submittedAt: r.submitted_at
+              status: r.cumulative_cgpa !== null && r.cumulative_cgpa !== undefined && r.cumulative_cgpa !== '' ? 'Updated' : 'Pending Entry',
+              submittedAt: r.submitted_at || r.updated_at
             }))
           });
         }
@@ -234,10 +235,11 @@ export const AuthProvider = ({ children }) => {
           studentStatus: (profile.is_active || profile.isActive) ? 'Active' : 'Inactive',
           semesterRecords: (profile.semester_records || profile.aiml_semester_records || []).map((r) => ({
             term: `Semester ${r.semester_number}`,
+            semNumber: r.semester_number,
             semesterNumber: r.semester_number,
             cgpa: r.cumulative_cgpa,
-            status: 'Updated',
-            submittedAt: r.submitted_at
+            status: r.cumulative_cgpa !== null && r.cumulative_cgpa !== undefined && r.cumulative_cgpa !== '' ? 'Updated' : 'Pending Entry',
+            submittedAt: r.submitted_at || r.updated_at
           }))
         };
         setActiveStudent(studentObj);
@@ -325,20 +327,40 @@ export const AuthProvider = ({ children }) => {
     const res = await api.updateStudentProfile(profileData);
     if (res.success) {
       const serverData = res.data || {};
+      const newYear = serverData.current_year ?? profileData.currentYear;
+      const newTerm = serverData.current_term ?? profileData.currentTerm;
       setActiveStudent((prev) => {
         if (!prev) return prev;
+        const cy = newYear !== undefined && newYear !== null ? Number(newYear) : prev.currentYear;
+        const ct = newTerm !== undefined && newTerm !== null ? Number(newTerm) : prev.currentTerm;
+        const newRecords = serverData.semester_records || profileData.semesterRecords;
         return {
           ...prev,
           name: serverData.full_name || profileData.name || profileData.fullName || prev.name,
           email: serverData.email ?? profileData.email ?? prev.email,
           phone: serverData.phone_number ?? profileData.phone ?? profileData.phoneNumber ?? prev.phone,
           location: serverData.location ?? profileData.location ?? prev.location,
+          currentYear: cy,
+          currentTerm: ct,
+          year: cy ? getAcademicYearDisplay(cy) : prev.year,
+          batch: cy ? getBatchLabel(cy) : prev.batch,
+          term: (cy && ct) ? `${cy}-${ct}` : prev.term,
           sscPercentage: serverData.ssc_percentage ?? profileData.sscPercentage ?? prev.sscPercentage,
           interType: serverData.qualification_type ?? profileData.qualificationType ?? profileData.interType ?? prev.interType,
           interPercentage: serverData.intermediate_percentage ?? profileData.intermediatePercentage ?? profileData.interPercentage ?? prev.interPercentage,
           hasBacklogs: serverData.has_backlogs ?? profileData.hasBacklogs ?? prev.hasBacklogs,
           backlogCount: serverData.backlog_count ?? profileData.backlogCount ?? prev.backlogCount,
-          profilePhoto: serverData.profile_photo_url || res.signedUrl || prev.profilePhoto
+          profilePhoto: serverData.profile_photo_url || res.signedUrl || prev.profilePhoto,
+          semesterRecords: Array.isArray(newRecords)
+            ? newRecords.map((r) => ({
+                term: `Semester ${r.semester_number ?? r.semNumber}`,
+                semNumber: r.semester_number ?? r.semNumber,
+                semesterNumber: r.semester_number ?? r.semNumber,
+                cgpa: r.cumulative_cgpa ?? r.cgpa,
+                status: (r.cumulative_cgpa ?? r.cgpa) !== null && (r.cumulative_cgpa ?? r.cgpa) !== undefined && (r.cumulative_cgpa ?? r.cgpa) !== '' ? 'Updated' : 'Pending Entry',
+                submittedAt: r.submitted_at || r.updated_at
+              }))
+            : prev.semesterRecords
         };
       });
       return { success: true, data: res.data };
@@ -367,6 +389,8 @@ export const AuthProvider = ({ children }) => {
   const updateStudentAcademicDetails = async (studentId, academicData) => {
     const res = await api.updateStudentProfile(academicData);
     if (res.success) {
+      const serverData = res.data || {};
+      const newRecords = serverData.semester_records || academicData.semesterRecords;
       setActiveStudent((prev) => {
         if (!prev) return prev;
         return {
@@ -374,10 +398,19 @@ export const AuthProvider = ({ children }) => {
           sscPercentage: academicData.sscPercentage ?? prev.sscPercentage,
           interType: academicData.interType ?? prev.interType,
           interPercentage: academicData.interPercentage ?? prev.interPercentage,
-          semesterRecords: academicData.semesterRecords ?? prev.semesterRecords
+          semesterRecords: Array.isArray(newRecords)
+            ? newRecords.map((r) => ({
+                term: `Semester ${r.semester_number ?? r.semNumber}`,
+                semNumber: r.semester_number ?? r.semNumber,
+                semesterNumber: r.semester_number ?? r.semNumber,
+                cgpa: r.cumulative_cgpa ?? r.cgpa,
+                status: (r.cumulative_cgpa ?? r.cgpa) !== null && (r.cumulative_cgpa ?? r.cgpa) !== undefined && (r.cumulative_cgpa ?? r.cgpa) !== '' ? 'Updated' : 'Pending Entry',
+                submittedAt: r.submitted_at || r.updated_at
+              }))
+            : prev.semesterRecords
         };
       });
-      return { success: true };
+      return { success: true, data: res.data };
     }
     return { success: false, error: res.error || 'Failed to update academic details' };
   };

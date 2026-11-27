@@ -52,15 +52,37 @@ export const getTermsForYear = (year) => {
  * - 4-1 students: up to Sem 7 (4-1)
  * - 4-2 students: up to Sem 8 (4-2)
  */
+/**
+ * Maximum completed semester mapping:
+ * Formula: ((year - 1) * 2) + term - 1
+ * - 2-1 students: up to Sem 2 (1-2 completed)
+ * - 2-2 students: up to Sem 3 (2-1 completed)
+ * - 3-1 students: up to Sem 4 (2-2 completed)
+ * - 3-2 students: up to Sem 5 (3-1 completed)
+ * - 4-1 students: up to Sem 6 (3-2 completed)
+ * - 4-2 students: up to Sem 7 (4-1 completed)
+ */
 export const getMaxCompletedSemForTerm = (term) => {
-  switch (term) {
-    case '2-1': return 3;
-    case '2-2': return 4;
-    case '3-1': return 5;
-    case '3-2': return 6;
-    case '4-1': return 7;
-    case '4-2': return 8;
-    default: return 0;
+  if (!term) return 0;
+  const s = String(term).trim();
+  switch (s) {
+    case '2-1': return 2;
+    case '2-2': return 3;
+    case '3-1': return 4;
+    case '3-2': return 5;
+    case '4-1': return 6;
+    case '4-2': return 7;
+    default: {
+      const parts = s.split('-');
+      if (parts.length === 2) {
+        const y = parseInt(parts[0], 10);
+        const t = parseInt(parts[1], 10);
+        if (!isNaN(y) && !isNaN(t) && y >= 2 && y <= 4 && (t === 1 || t === 2)) {
+          return ((y - 1) * 2) + t - 1;
+        }
+      }
+      return 0;
+    }
   }
 };
 
@@ -412,7 +434,15 @@ export const getStudentLatestAcademics = (student) => {
     };
   }
   const records = student.semesterRecords || student.aiml_semester_records || [];
-  const completed = records.filter(r => r && r.cgpa !== null && r.cgpa !== undefined && (r.status === 'Updated' || r.cumulative_cgpa !== undefined));
+  const sorted = [...records].sort((a, b) => {
+    const semA = a.semesterNumber ?? a.semNumber ?? a.semester_number ?? 0;
+    const semB = b.semesterNumber ?? b.semNumber ?? b.semester_number ?? 0;
+    return semA - semB;
+  });
+  const completed = sorted.filter(r => {
+    const val = r?.cgpa ?? r?.cumulative_cgpa;
+    return val !== null && val !== undefined && val !== '' && !isNaN(Number(val));
+  });
   if (completed.length === 0) {
     return {
       latestSemester: 'None',
@@ -420,8 +450,9 @@ export const getStudentLatestAcademics = (student) => {
     };
   }
   const latest = completed[completed.length - 1];
+  const semNum = latest.semesterNumber ?? latest.semNumber ?? latest.semester_number;
   return {
-    latestSemester: latest.term || (latest.semester_number ? `Semester ${latest.semester_number}` : 'None'),
+    latestSemester: semNum ? `Semester ${semNum}` : (latest.term || 'None'),
     latestCgpa: latest.cgpa ?? latest.cumulative_cgpa ?? null,
   };
 };

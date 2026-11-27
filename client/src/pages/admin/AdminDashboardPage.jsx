@@ -1652,9 +1652,14 @@ export default function AdminDashboardPage() {
 
                             {/* 6. Year */}
                             <td className="py-2.5 px-2">
-                              <span className="font-semibold text-slate-700">
+                              <span className="font-semibold text-slate-700 block">
                                 {std.year && std.year !== 'Not Provided' ? std.year : '—'}
                               </span>
+                              {std.batch && std.batch !== 'Academic Batch Pending' && (
+                                <span className="text-[10px] text-[#4A192B] font-bold block">
+                                  {std.batch}
+                                </span>
+                              )}
                             </td>
 
                             {/* 7. Current Term */}
@@ -1806,6 +1811,11 @@ export default function AdminDashboardPage() {
                                 )}
                               </h4>
                               <span className="font-mono font-bold text-xs text-[#4A192B] block">{std.registerNumber}</span>
+                              {std.year && std.year !== 'Not Provided' && (
+                                <span className="text-[10px] text-slate-500 font-semibold block">
+                                  {std.year} {std.batch && std.batch !== 'Academic Batch Pending' ? `(${std.batch})` : ''}
+                                </span>
+                              )}
                             </div>
                           </div>
                           <div className="flex flex-col items-end gap-1">

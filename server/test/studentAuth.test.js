@@ -210,6 +210,7 @@ function createMockSupabaseAdmin() {
 
       const builder = {
         select: (fields) => builder,
+        order: (col, opts) => builder,
         eq: (col, val) => {
           filter[col] = val;
           return builder;
@@ -267,6 +268,15 @@ function createMockSupabaseAdmin() {
         then: (resolve) => {
           if (dbUpdateShouldFail) {
             return resolve({ data: null, error: { message: 'Database error' } });
+          }
+          if (table === 'aiml_semester_records') {
+            const matched = Object.values(mockSemesterRecords).filter(r => {
+              for (const [k, v] of Object.entries(filter)) {
+                if (r[k] !== v) return false;
+              }
+              return true;
+            });
+            return resolve({ data: matched, error: null });
           }
           if (table === 'aiml_student_profiles') {
             const matched = Object.values(mockProfiles).filter(p => {
@@ -795,7 +805,7 @@ describe('Student Authentication & Profile Hardening Suite', () => {
       assert.equal(data.data.location, 'Kanchikacherla');
     });
 
-    test('Completed student cannot modify locked academic standing (current_year, current_term)', async () => {
+    test('Completed student can update academic standing (current_year, current_term) within valid bounds (2..4, 1..2)', async () => {
       const res = await fetch(`${baseUrl}/api/student/profile`, {
         method: 'PUT',
         headers: {
@@ -811,9 +821,75 @@ describe('Student Authentication & Profile Hardening Suite', () => {
       assert.equal(res.status, 200);
       const data = await res.json();
       assert.equal(data.success, true);
-      // Academic standing remains locked because is_profile_completed is true
+      assert.equal(data.data.current_year, 4);
+      assert.equal(data.data.current_term, 2);
+      assert.equal(data.data.admission_year, 2023);
+    });
+
+    test('Student updating academic standing with invalid year/term is rejected with 400', async () => {
+      const res = await fetch(`${baseUrl}/api/student/profile`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: 'Bearer token-completed'
+        },
+        body: JSON.stringify({
+          currentYear: 5,
+          currentTerm: 1
+        })
+      });
+
+      assert.equal(res.status, 400);
+      const data = await res.json();
+      assert.equal(data.success, false);
+      assert.match(data.error, /Academic year must be between 2/i);
+    });
+
+    test('Student can save valid completed semester CGPAs via PUT /api/student/profile', async () => {
+      const res = await fetch(`${baseUrl}/api/student/profile`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: 'Bearer token-completed'
+        },
+        body: JSON.stringify({
+          currentYear: 3,
+          currentTerm: 2,
+          semesterRecords: [
+            { semNumber: 1, cgpa: 8.5 },
+            { semNumber: 2, cgpa: 8.75 },
+            { semNumber: 3, cgpa: 9.0 }
+          ]
+        })
+      });
+
+      assert.equal(res.status, 200);
+      const data = await res.json();
+      assert.equal(data.success, true);
       assert.equal(data.data.current_year, 3);
-      assert.equal(data.data.current_term, 1);
+      assert.equal(data.data.current_term, 2);
+    });
+
+    test('Student submitting future semester via PUT /api/student/profile is rejected with 400', async () => {
+      const res = await fetch(`${baseUrl}/api/student/profile`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: 'Bearer token-completed'
+        },
+        body: JSON.stringify({
+          currentYear: 2,
+          currentTerm: 1, // max completed is 2
+          semesterRecords: [
+            { semNumber: 4, cgpa: 8.5 } // semester 4 is future
+          ]
+        })
+      });
+
+      assert.equal(res.status, 400);
+      const data = await res.json();
+      assert.equal(data.success, false);
+      assert.match(data.error, /ongoing or future semester|not yet eligible/i);
     });
 
     test('Unauthenticated request to PUT /api/student/profile is strictly rejected with 401', async () => {

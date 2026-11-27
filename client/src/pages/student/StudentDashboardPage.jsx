@@ -30,7 +30,7 @@ import BRANDING from '../../config/branding';
 import CollegeLogo from '../../components/CollegeLogo';
 import { useAuth } from '../../context/AuthContext';
 import { getMaxCompletedSemForTerm, getStudentLatestAcademics, ALL_SEMESTER_TERMS, getTermsForYear, YEAR_ALLOWED_TERMS } from '../../data/mockData';
-import { getBatchLabel, getAcademicYearDisplay } from '../../utils/academicYearMapping';
+import { getBatchLabel, getAcademicYearDisplay, getMaxCompletedSemesters } from '../../utils/academicYearMapping';
 import { useTheme } from '../../context/ThemeContext';
 import { THEMES } from '../../config/theme';
 import StudentChangePasswordView from '../../components/StudentChangePasswordView';
@@ -75,6 +75,8 @@ export default function StudentDashboardPage() {
     email: activeStudent?.email || '',
     phone: activeStudent?.phone || '',
     location: activeStudent?.location || '',
+    currentYear: activeStudent?.currentYear || 3,
+    currentTerm: activeStudent?.currentTerm || 1,
     year: activeStudent?.year || '',
     term: activeStudent?.term || '',
     profilePhoto: activeStudent?.profilePhoto || null,
@@ -93,6 +95,8 @@ export default function StudentDashboardPage() {
       email: activeStudent?.email || '',
       phone: activeStudent?.phone || '',
       location: activeStudent?.location || '',
+      currentYear: activeStudent?.currentYear || 3,
+      currentTerm: activeStudent?.currentTerm || 1,
       year: activeStudent?.year || '',
       term: activeStudent?.term || '',
       profilePhoto: activeStudent?.profilePhoto || '',
@@ -198,7 +202,9 @@ export default function StudentDashboardPage() {
           email: profileForm.email.trim(),
           phoneNumber: profileForm.phone.trim(),
           phone: profileForm.phone.trim(),
-          location: profileForm.location.trim()
+          location: profileForm.location.trim(),
+          currentYear: parseInt(profileForm.currentYear, 10),
+          currentTerm: parseInt(profileForm.currentTerm, 10)
         };
 
         if (profileForm.hasBacklogs !== null && profileForm.hasBacklogs !== undefined) {
@@ -240,9 +246,13 @@ export default function StudentDashboardPage() {
       email: activeStudent?.email || '',
       phone: activeStudent?.phone || '',
       location: activeStudent?.location || '',
+      currentYear: activeStudent?.currentYear || 3,
+      currentTerm: activeStudent?.currentTerm || 1,
       year: activeStudent?.year || '',
       term: activeStudent?.term || '',
       profilePhoto: activeStudent?.profilePhoto || null,
+      hasBacklogs: activeStudent?.hasBacklogs ?? null,
+      backlogCount: activeStudent?.backlogCount !== null && activeStudent?.backlogCount !== undefined ? String(activeStudent.backlogCount) : '',
     });
     setPhotoPreview(activeStudent?.profilePhoto || null);
     setIsProfileDirty(false);
@@ -252,11 +262,28 @@ export default function StudentDashboardPage() {
   // SECTION 3: ACADEMIC DETAILS FORM STATE
   // Explicit Save / Cancel behaviour: No automatic saving!
   // ==========================================
+  const buildSemesterRecords = (existingRecords = []) => {
+    return ALL_SEMESTER_TERMS.map((t) => {
+      const existing = (existingRecords || []).find(
+        (r) => (r.semNumber === t.semNumber || r.semesterNumber === t.semNumber || r.term === t.term || r.term === `Semester ${t.semNumber}`)
+      );
+      const rawVal = existing?.cgpa ?? existing?.cumulative_cgpa ?? null;
+      return {
+        term: t.term,
+        semNumber: t.semNumber,
+        semesterNumber: t.semNumber,
+        cgpa: rawVal !== null && rawVal !== undefined && rawVal !== '' ? String(rawVal) : '',
+        status: rawVal !== null && rawVal !== undefined && rawVal !== '' ? 'Updated' : 'Pending Entry',
+        submittedAt: existing?.submittedAt || existing?.updated_at || null
+      };
+    });
+  };
+
   const [academicForm, setAcademicForm] = useState({
     sscPercentage: activeStudent?.sscPercentage || '',
     interType: activeStudent?.interType || 'intermediate',
     interPercentage: activeStudent?.interPercentage || '',
-    semesterRecords: JSON.parse(JSON.stringify(activeStudent?.semesterRecords || [])),
+    semesterRecords: buildSemesterRecords(activeStudent?.semesterRecords || []),
   });
 
   const [isAcademicDirty, setIsAcademicDirty] = useState(false);
@@ -266,45 +293,106 @@ export default function StudentDashboardPage() {
       sscPercentage: activeStudent?.sscPercentage || '',
       interType: activeStudent?.interType || 'intermediate',
       interPercentage: activeStudent?.interPercentage || '',
-      semesterRecords: JSON.parse(JSON.stringify(activeStudent?.semesterRecords || [])),
+      semesterRecords: buildSemesterRecords(activeStudent?.semesterRecords || []),
     });
     setIsAcademicDirty(false);
   }, [activeStudent]);
 
-  // Max completed semester number based on current term
-  const maxCompletedSem = getMaxCompletedSemForTerm(activeStudent?.term || '');
+  // Max completed semester number based on current year and term
+  const maxCompletedSem = (activeStudent?.currentYear && activeStudent?.currentTerm)
+    ? getMaxCompletedSemesters(activeStudent.currentYear, activeStudent.currentTerm)
+    : getMaxCompletedSemForTerm(activeStudent?.term || '');
 
   const handleSemesterInputChange = (semNumber, field, value) => {
+    // Only allow numbers and decimal point, max 5 characters (e.g. 10.00)
+    const sanitized = value.replace(/[^0-9.]/g, '');
+    // Prevent multiple decimals
+    const parts = sanitized.split('.');
+    const cleanValue = parts.length > 2 ? `${parts[0]}.${parts.slice(1).join('')}` : sanitized;
+
     setAcademicForm((prev) => {
-      const updated = prev.semesterRecords.map((r) => {
-        if (r.semNumber === semNumber) {
-          const numVal = value === '' ? null : parseFloat(value);
-          const next = { ...r, [field]: numVal };
-          if (next.cgpa !== null) {
-            next.status = 'Updated';
-          } else {
-            next.status = 'Pending Entry';
-          }
-          return next;
-        }
-        return r;
-      });
-      return { ...prev, semesterRecords: updated };
+      const records = Array.isArray(prev.semesterRecords) ? [...prev.semesterRecords] : buildSemesterRecords([]);
+      const idx = records.findIndex((r) => r.semNumber === semNumber || r.semesterNumber === semNumber);
+      if (idx >= 0) {
+        records[idx] = {
+          ...records[idx],
+          [field]: cleanValue,
+          status: cleanValue.trim() !== '' ? 'Updated' : 'Pending Entry'
+        };
+      } else {
+        records.push({
+          term: `Term ${semNumber}`,
+          semNumber,
+          semesterNumber: semNumber,
+          [field]: cleanValue,
+          status: cleanValue.trim() !== '' ? 'Updated' : 'Pending Entry'
+        });
+      }
+      return { ...prev, semesterRecords: records };
     });
     setIsAcademicDirty(true);
   };
 
   const handleSaveAcademicDetails = async (e) => {
     e.preventDefault();
-    if (activeStudent?.id) {
-      setIsSavingAcademic(true);
-      const res = await updateStudentAcademicDetails(activeStudent.id, academicForm);
-      setIsSavingAcademic(false);
+    if (!activeStudent?.id) return;
 
+    // Validate all entered CGPAs for completed eligible semesters
+    const validRecordsToSave = [];
+    for (const rec of academicForm.semesterRecords) {
+      const semNum = rec.semNumber || rec.semesterNumber;
+      if (semNum <= maxCompletedSem) {
+        const val = String(rec.cgpa || '').trim();
+        if (val !== '') {
+          const num = parseFloat(val);
+          if (isNaN(num) || num < 0.00 || num > 10.00) {
+            setToastMessage({
+              text: `Invalid CGPA for Semester ${semNum}. Value must be between 0.00 and 10.00.`,
+              type: 'error'
+            });
+            return;
+          }
+          if (val.includes('.') && val.split('.')[1].length > 2) {
+            setToastMessage({
+              text: `Invalid format for Semester ${semNum}. Maximum 2 decimal places allowed.`,
+              type: 'error'
+            });
+            return;
+          }
+          validRecordsToSave.push({
+            semNumber: semNum,
+            semesterNumber: semNum,
+            cumulativeCgpa: Math.round(num * 100) / 100,
+            cgpa: Math.round(num * 100) / 100
+          });
+        }
+      } else {
+        // Future semester submission guard
+        const val = String(rec.cgpa || '').trim();
+        if (val !== '') {
+          setToastMessage({
+            text: `Semester ${semNum} is not yet completed. Future semester CGPAs cannot be submitted.`,
+            type: 'error'
+          });
+          return;
+        }
+      }
+    }
+
+    setIsSavingAcademic(true);
+    try {
+      const payload = {
+        sscPercentage: academicForm.sscPercentage !== '' ? parseFloat(academicForm.sscPercentage) : undefined,
+        qualificationType: academicForm.interType,
+        intermediatePercentage: academicForm.interPercentage !== '' ? parseFloat(academicForm.interPercentage) : undefined,
+        semesterRecords: validRecordsToSave
+      };
+
+      const res = await updateStudentAcademicDetails(activeStudent.id, payload);
       if (res?.success) {
         setIsAcademicDirty(false);
         setToastMessage({
-          text: 'Academic details saved and verified in database!',
+          text: 'Academic details and semester CGPAs saved successfully!',
           type: 'success'
         });
         setTimeout(() => setToastMessage(null), 3500);
@@ -314,6 +402,13 @@ export default function StudentDashboardPage() {
           type: 'error'
         });
       }
+    } catch (err) {
+      setToastMessage({
+        text: err?.message || 'Network error saving academic details. Please retry.',
+        type: 'error'
+      });
+    } finally {
+      setIsSavingAcademic(false);
     }
   };
 
@@ -322,7 +417,7 @@ export default function StudentDashboardPage() {
       sscPercentage: activeStudent?.sscPercentage || '',
       interType: activeStudent?.interType || 'intermediate',
       interPercentage: activeStudent?.interPercentage || '',
-      semesterRecords: JSON.parse(JSON.stringify(activeStudent?.semesterRecords || [])),
+      semesterRecords: buildSemesterRecords(activeStudent?.semesterRecords || []),
     });
     setIsAcademicDirty(false);
   };
@@ -1010,28 +1105,48 @@ export default function StudentDashboardPage() {
                   )}
                 </div>
 
-                {/* Academic Year (Institutional Standing - Locked after onboarding) */}
+                {/* Academic Year & Batch Selection */}
                 <div>
-                  <label className="block font-bold text-slate-700 mb-1">
-                    Current Academic Year &amp; Batch
+                  <label htmlFor="prof-year" className="block font-bold text-slate-700 mb-1 text-xs">
+                    Current Academic Year &amp; Batch <span className="text-red-500">*</span>
                   </label>
-                  <div className="w-full p-2.5 rounded-xl border border-slate-200 bg-slate-50 font-semibold text-slate-700 flex items-center justify-between">
-                    <span>{activeStudent.year} ({activeStudent.batch || getBatchLabel(activeStudent.currentYear)})</span>
-                    <span className="text-[10px] bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded font-mono font-bold">LOCKED</span>
-                  </div>
+                  <select
+                    id="prof-year"
+                    value={profileForm.currentYear}
+                    onChange={(e) => {
+                      const yr = parseInt(e.target.value, 10);
+                      handleProfileFieldChange('currentYear', yr);
+                    }}
+                    className="w-full p-2.5 rounded-xl border border-slate-300 bg-white font-semibold text-slate-900 outline-none focus:ring-1 focus:ring-[#5E8881]"
+                  >
+                    <option value={2}>2nd Year (2025 Batch)</option>
+                    <option value={3}>3rd Year (2024 Batch)</option>
+                    <option value={4}>4th Year (2023 Batch)</option>
+                  </select>
+                  <p className="text-[11px] text-slate-500 mt-1">
+                    Batch: <span className="font-bold text-[#5E8881]">{getBatchLabel(profileForm.currentYear)}</span>
+                  </p>
                 </div>
 
-                {/* Current Term (Locked after onboarding) */}
+                {/* Current Semester / Term */}
                 <div className="sm:col-span-2">
-                  <label className="block font-bold text-slate-700 mb-1">
-                    Current Semester / Term
+                  <label htmlFor="prof-term" className="block font-bold text-slate-700 mb-1 text-xs">
+                    Current Semester / Term <span className="text-red-500">*</span>
                   </label>
-                  <div className="w-full p-2.5 rounded-xl border border-slate-200 bg-slate-50 font-semibold text-slate-700 flex items-center justify-between">
-                    <span>Term {activeStudent.currentTerm || 1} ({activeStudent.term})</span>
-                    <span className="text-[10px] bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded font-mono font-bold">LOCKED</span>
-                  </div>
+                  <select
+                    id="prof-term"
+                    value={profileForm.currentTerm}
+                    onChange={(e) => {
+                      const tr = parseInt(e.target.value, 10);
+                      handleProfileFieldChange('currentTerm', tr);
+                    }}
+                    className="w-full p-2.5 rounded-xl border border-slate-300 bg-white font-semibold text-slate-900 outline-none focus:ring-1 focus:ring-[#5E8881]"
+                  >
+                    <option value={1}>Term 1 ({profileForm.currentYear}-1)</option>
+                    <option value={2}>Term 2 ({profileForm.currentYear}-2)</option>
+                  </select>
                   <p className="text-[11px] text-slate-500 mt-1">
-                    Academic cohort and term were recorded during onboarding. To request a standing update, contact the AIML HOD Office.
+                    Selected Standing: <span className="font-bold text-[#5E8881]">Term {profileForm.currentTerm} ({profileForm.currentYear}-{profileForm.currentTerm})</span>
                   </p>
                 </div>
               </div>
@@ -1182,15 +1297,17 @@ export default function StudentDashboardPage() {
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {ALL_SEMESTER_TERMS.map((termDef) => {
-                      const record = academicForm.semesterRecords.find((r) => r.semNumber === termDef.semNumber) || {
+                      const record = academicForm.semesterRecords.find((r) => r.semNumber === termDef.semNumber || r.semesterNumber === termDef.semNumber) || {
                         term: termDef.term,
                         semNumber: termDef.semNumber,
-                        cgpa: null,
-                        status: 'Upcoming'
+                        semesterNumber: termDef.semNumber,
+                        cgpa: '',
+                        status: 'Pending Entry'
                       };
 
                       const isCompletedEligible = termDef.semNumber <= maxCompletedSem;
                       const isOngoing = termDef.semNumber === maxCompletedSem + 1;
+                      const hasCgpa = record.cgpa !== null && record.cgpa !== undefined && String(record.cgpa).trim() !== '';
 
                       return (
                         <tr key={termDef.term} className={isCompletedEligible ? 'hover:bg-slate-50' : 'bg-slate-50/50'}>
@@ -1205,18 +1322,16 @@ export default function StudentDashboardPage() {
                           <td className="py-2.5 px-4">
                             {isCompletedEligible ? (
                               <input
-                                type="number"
-                                step="0.01"
-                                min="0"
-                                max="10"
+                                type="text"
+                                inputMode="decimal"
                                 placeholder="e.g. 8.50"
-                                value={record.cgpa !== null ? record.cgpa : ''}
+                                value={record.cgpa !== null && record.cgpa !== undefined ? record.cgpa : ''}
                                 onChange={(e) => handleSemesterInputChange(termDef.semNumber, 'cgpa', e.target.value)}
                                 className="w-28 p-1.5 rounded-lg border border-slate-300 bg-white font-bold text-emerald-700 outline-none focus:ring-1 focus:ring-[#5E8881]"
                               />
                             ) : (
                               <span className="text-slate-400 font-medium">
-                                {isOngoing ? 'Current Ongoing' : 'Locked'}
+                                {isOngoing ? 'Current Ongoing' : 'Not Yet Eligible'}
                               </span>
                             )}
                           </td>
@@ -1224,7 +1339,7 @@ export default function StudentDashboardPage() {
                           {/* Status */}
                           <td className="py-3 px-3">
                             {isCompletedEligible ? (
-                              record.cgpa !== null ? (
+                              hasCgpa ? (
                                 <span className="inline-block px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-bold text-[10px]">
                                   Updated
                                 </span>
@@ -1239,7 +1354,7 @@ export default function StudentDashboardPage() {
                               </span>
                             ) : (
                               <span className="inline-block px-2.5 py-0.5 rounded-full bg-slate-200 text-slate-600 font-bold text-[10px]">
-                                Upcoming
+                                Not Yet Eligible
                               </span>
                             )}
                           </td>
@@ -1253,15 +1368,17 @@ export default function StudentDashboardPage() {
               {/* MOBILE DEDICATED VIEW: Semester CGPA Cards (md:hidden) */}
               <div className="md:hidden space-y-3">
                 {ALL_SEMESTER_TERMS.map((termDef) => {
-                  const record = academicForm.semesterRecords.find((r) => r.semNumber === termDef.semNumber) || {
+                  const record = academicForm.semesterRecords.find((r) => r.semNumber === termDef.semNumber || r.semesterNumber === termDef.semNumber) || {
                     term: termDef.term,
                     semNumber: termDef.semNumber,
-                    cgpa: null,
-                    status: 'Upcoming'
+                    semesterNumber: termDef.semNumber,
+                    cgpa: '',
+                    status: 'Pending Entry'
                   };
 
                   const isCompletedEligible = termDef.semNumber <= maxCompletedSem;
                   const isOngoing = termDef.semNumber === maxCompletedSem + 1;
+                  const hasCgpa = record.cgpa !== null && record.cgpa !== undefined && String(record.cgpa).trim() !== '';
 
                   return (
                     <div
@@ -1282,7 +1399,7 @@ export default function StudentDashboardPage() {
                         </div>
 
                         {isCompletedEligible ? (
-                          record.cgpa !== null ? (
+                          hasCgpa ? (
                             <span className="inline-block px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-bold text-[10px]">
                               Updated
                             </span>
@@ -1297,7 +1414,7 @@ export default function StudentDashboardPage() {
                           </span>
                         ) : (
                           <span className="inline-block px-2.5 py-0.5 rounded-full bg-slate-200 text-slate-600 font-bold text-[10px]">
-                            Upcoming
+                            Not Yet Eligible
                           </span>
                         )}
                       </div>
@@ -1314,12 +1431,10 @@ export default function StudentDashboardPage() {
                             </label>
                             <input
                               id={`m-cgpa-${termDef.term}`}
-                              type="number"
-                              step="0.01"
-                              min="0"
-                              max="10"
+                              type="text"
+                              inputMode="decimal"
                               placeholder="e.g. 8.50"
-                              value={record.cgpa !== null ? record.cgpa : ''}
+                              value={record.cgpa !== null && record.cgpa !== undefined ? record.cgpa : ''}
                               onChange={(e) => handleSemesterInputChange(termDef.semNumber, 'cgpa', e.target.value)}
                               className="w-full p-2.5 rounded-xl border border-slate-300 bg-white font-extrabold text-sm text-emerald-800 outline-none focus:ring-1 focus:ring-[#5E8881]"
                             />
@@ -1330,7 +1445,7 @@ export default function StudentDashboardPage() {
                           </p>
                         ) : (
                           <p className="text-[11px] text-slate-500 bg-slate-100/60 p-2 rounded-xl font-medium">
-                            Upcoming semester (locked).
+                            Upcoming semester (not yet eligible).
                           </p>
                         )}
                       </div>

@@ -72,7 +72,7 @@ export default function StudentProfileModal({
   const semesterTableData = ALL_SEMESTER_TERMS.map((item) => {
     const isEligible = !isPending && maxCompletedSem > 0 && item.semNumber <= maxCompletedSem;
     const rec = (student.semesterRecords || []).find(
-      (r) => r.semesterNumber === item.semNumber || r.term === item.term || r.term === `Semester ${item.semNumber}`
+      (r) => r.semesterNumber === item.semNumber || r.semNumber === item.semNumber || r.term === item.term || r.term === `Semester ${item.semNumber}`
     );
     const hasCgpa = rec && rec.cgpa !== null && rec.cgpa !== undefined && rec.cgpa !== '';
 
