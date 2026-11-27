@@ -9,12 +9,14 @@
  */
 
 export const ACADEMIC_YEAR_TO_BATCH = Object.freeze({
+  1: '2026 Batch',
   2: '2025 Batch',
   3: '2024 Batch',
   4: '2023 Batch'
 });
 
 export const BATCH_YEAR_NUMBERS = Object.freeze({
+  1: 2026,
   2: 2025,
   3: 2024,
   4: 2023
@@ -42,6 +44,7 @@ export const getBatchLabel = (year) => {
  */
 export const getAcademicYearDisplay = (year) => {
   const norm = normalizeAcademicYear(year);
+  if (norm === 1) return '1st Year';
   if (norm === 2) return '2nd Year';
   if (norm === 3) return '3rd Year';
   if (norm === 4) return '4th Year';

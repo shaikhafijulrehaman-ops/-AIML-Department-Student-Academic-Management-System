@@ -12,6 +12,7 @@ if (!supabaseUrl || !supabaseSecretKey) {
 
 /**
  * Real Supabase privileged instance.
+ * Explicitly locks Authorization and apikey to the secret key to prevent session mutation.
  */
 const realSupabaseAdmin = (supabaseUrl && supabaseSecretKey)
   ? createClient(supabaseUrl, supabaseSecretKey, {
@@ -20,11 +21,37 @@ const realSupabaseAdmin = (supabaseUrl && supabaseSecretKey)
         autoRefreshToken: false,
         detectSessionInUrl: false,
       },
+      global: {
+        headers: {
+          Authorization: `Bearer ${supabaseSecretKey}`,
+          apikey: supabaseSecretKey
+        }
+      }
     })
   : null;
 
 // Isolated mock state for unit & integration testing
 let adminOverride = null;
+
+/**
+ * Factory for creating ephemeral, isolated clients for password verification.
+ * Prevents user signInWithPassword calls from mutating the privileged admin client session.
+ */
+export function createAuthClient() {
+  if (adminOverride) {
+    return adminOverride;
+  }
+  const url = ENV.SUPABASE_URL || process.env.SUPABASE_URL;
+  const key = ENV.SUPABASE_SECRET_KEY || process.env.SUPABASE_SECRET_KEY;
+  if (!url || !key) return null;
+  return createClient(url, key, {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+      detectSessionInUrl: false
+    }
+  });
+}
 
 /**
  * Registers an isolated mock for the admin client in test environments.

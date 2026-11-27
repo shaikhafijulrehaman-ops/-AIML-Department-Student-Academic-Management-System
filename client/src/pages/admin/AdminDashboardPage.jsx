@@ -218,23 +218,28 @@ export default function AdminDashboardPage() {
   const filteredStudents = useMemo(() => {
     const regQuery = searchRegNo.trim().toUpperCase();
     const nameQuery = searchName.trim().toLowerCase();
+    const appliedReg = (appliedFilters.regNo || '').trim().toUpperCase();
+    const appliedName = (appliedFilters.name || '').trim().toLowerCase();
 
     return students.filter((s) => {
+      if (!s) return false;
       const latest = getStudentLatestAcademics(s);
+      const sReg = (s.registerNumber || '').toUpperCase();
+      const sName = (s.name || '').toLowerCase();
 
       // Search by Register Number (supports exact and partial matching, case-insensitive)
-      if (regQuery && !s.registerNumber.toUpperCase().includes(regQuery) && !s.name.toUpperCase().includes(regQuery)) {
+      if (regQuery && !sReg.includes(regQuery) && !sName.toUpperCase().includes(regQuery)) {
         return false;
       }
-      if (appliedFilters.regNo && !s.registerNumber.toUpperCase().includes(appliedFilters.regNo.toUpperCase()) && !s.name.toUpperCase().includes(appliedFilters.regNo.toUpperCase())) {
+      if (appliedReg && !sReg.includes(appliedReg) && !sName.toUpperCase().includes(appliedReg)) {
         return false;
       }
 
       // Search by Student Name (supports exact and partial matching, case-insensitive, with roll number fallback)
-      if (nameQuery && !s.name.toLowerCase().includes(nameQuery) && !s.registerNumber.toLowerCase().includes(nameQuery)) {
+      if (nameQuery && !sName.includes(nameQuery) && !sReg.toLowerCase().includes(nameQuery)) {
         return false;
       }
-      if (appliedFilters.name && !s.name.toLowerCase().includes(appliedFilters.name.toLowerCase()) && !s.registerNumber.toLowerCase().includes(appliedFilters.name.toLowerCase())) {
+      if (appliedName && !sName.includes(appliedName) && !sReg.toLowerCase().includes(appliedName)) {
         return false;
       }
 

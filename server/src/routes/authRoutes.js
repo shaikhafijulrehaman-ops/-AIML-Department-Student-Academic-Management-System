@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { supabaseAdmin, isSupabaseAdminReady } from '../config/supabaseAdmin.js';
+import { supabaseAdmin, isSupabaseAdminReady, createAuthClient } from '../config/supabaseAdmin.js';
 import { requireAuth, getDeterministicStudentEmail } from '../middleware/authMiddleware.js';
 
 const router = Router();
@@ -33,8 +33,9 @@ router.post('/login', async (req, res, next) => {
 
     const trimmedEmail = email.trim().toLowerCase();
 
-    // Authenticate with Supabase Auth
-    const { data: authData, error: authError } = await supabaseAdmin.auth.signInWithPassword({
+    // Authenticate with Supabase Auth via isolated auth client (avoids mutating service_role session)
+    const authClient = createAuthClient() || supabaseAdmin;
+    const { data: authData, error: authError } = await authClient.auth.signInWithPassword({
       email: trimmedEmail,
       password: password
     });
@@ -112,8 +113,9 @@ router.post('/student-login', async (req, res, next) => {
     const cleanRegNo = registerNumber.trim().toUpperCase();
     const internalEmail = getDeterministicStudentEmail(cleanRegNo);
 
-    // Authenticate via Supabase Auth
-    const { data: authData, error: authError } = await supabaseAdmin.auth.signInWithPassword({
+    // Authenticate via Supabase Auth using isolated client
+    const authClient = createAuthClient() || supabaseAdmin;
+    const { data: authData, error: authError } = await authClient.auth.signInWithPassword({
       email: internalEmail,
       password: password
     });

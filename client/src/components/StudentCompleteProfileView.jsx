@@ -31,8 +31,8 @@ export default function StudentCompleteProfileView({ student, onCompleteProfile,
   );
   const [year, setYear] = useState('3rd Year');
   const [term, setTerm] = useState('3-1');
-  const [uploadedPhotoPath, setUploadedPhotoPath] = useState(student.profilePhotoPath || null);
-  const [photoPreview, setPhotoPreview] = useState(student.profilePhoto || null);
+  const [uploadedPhotoPath, setUploadedPhotoPath] = useState(student.profilePhotoPath || student.profile_photo_path || null);
+  const [photoPreview, setPhotoPreview] = useState(student.profilePhoto || student.profile_photo_url || null);
   const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
 
   // Previous Education
@@ -148,8 +148,8 @@ export default function StudentCompleteProfileView({ student, onCompleteProfile,
       }
 
       const res = await uploadStudentPhoto(fileToUpload);
-      if (res?.success && (res.photoPath || res.signedUrl)) {
-        setUploadedPhotoPath(res.photoPath);
+      if (res?.success && (res.profilePhotoPath || res.photoPath || res.signedUrl)) {
+        setUploadedPhotoPath(res.profilePhotoPath || res.photoPath);
         if (res.signedUrl) {
           setPhotoPreview(res.signedUrl);
         }

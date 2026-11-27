@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Lock, Key, AlertCircle, Eye, EyeOff, ShieldCheck, ArrowRight } from 'lucide-react';
+import { Lock, Key, AlertCircle, Eye, EyeOff, ShieldCheck, ArrowRight, Loader2 } from 'lucide-react';
 import CollegeLogo from './CollegeLogo';
 import BRANDING from '../config/branding';
 
@@ -20,15 +20,15 @@ export default function StudentChangePasswordView({ student, onPasswordChanged, 
     e.preventDefault();
     setError('');
 
-    const p1 = newPassword.trim();
-    const p2 = confirmPassword.trim();
+    const p1 = newPassword;
+    const p2 = confirmPassword;
 
-    if (!p1) {
+    if (!p1 || p1.trim().length === 0) {
       setError('New Password is required.');
       return;
     }
-    if (p1.length < 4) {
-      setError('Password must be at least 4 characters.');
+    if (p1.length < 6) {
+      setError('Password must be at least 6 characters.');
       return;
     }
     if (!p2) {
@@ -45,6 +45,11 @@ export default function StudentChangePasswordView({ student, onPasswordChanged, 
       if (!res || !res.success) {
         setIsSubmitting(false);
         setError(res?.error || 'Failed to update password. Please try again.');
+      } else {
+        // Clear sensitive password inputs upon confirmed success
+        setNewPassword('');
+        setConfirmPassword('');
+        setError('');
       }
     }).catch((err) => {
       setIsSubmitting(false);
@@ -121,12 +126,13 @@ export default function StudentChangePasswordView({ student, onPasswordChanged, 
               <input
                 id="first-login-pass"
                 type={showNew ? 'text' : 'password'}
+                autoComplete="new-password"
                 value={newPassword}
                 onChange={(e) => {
                   setNewPassword(e.target.value);
                   setError('');
                 }}
-                placeholder="Enter new password (min. 4 characters)..."
+                placeholder="Enter new password (min. 6 characters)..."
                 className="w-full pl-9 pr-10 py-2.5 rounded-xl border border-slate-300 bg-white text-xs font-medium text-slate-900 placeholder:text-slate-400 outline-none focus:ring-2 focus:ring-[#5E8881]/20 focus:border-[#5E8881] transition-all"
                 autoFocus
               />
@@ -152,6 +158,7 @@ export default function StudentChangePasswordView({ student, onPasswordChanged, 
               <input
                 id="first-login-confirm"
                 type={showConfirm ? 'text' : 'password'}
+                autoComplete="new-password"
                 value={confirmPassword}
                 onChange={(e) => {
                   setConfirmPassword(e.target.value);
@@ -174,10 +181,23 @@ export default function StudentChangePasswordView({ student, onPasswordChanged, 
           <button
             type="submit"
             disabled={isSubmitting}
-            className="w-full py-3 px-4 rounded-xl bg-[#5E8881] hover:bg-[#48706A] active:scale-[0.99] text-white font-bold text-xs shadow-md transition-all cursor-pointer flex items-center justify-center gap-2"
+            className={`w-full py-3 px-4 rounded-xl font-bold text-xs shadow-md transition-all flex items-center justify-center gap-2 ${
+              isSubmitting
+                ? 'bg-slate-400 cursor-not-allowed text-white'
+                : 'bg-[#5E8881] hover:bg-[#48706A] active:scale-[0.99] text-white cursor-pointer'
+            }`}
           >
-            <span>{isSubmitting ? 'Updating Password...' : 'Save Password & Continue to Profile'}</span>
-            <ArrowRight className="w-4 h-4 text-[#E8213A]" />
+            {isSubmitting ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin text-white" />
+                <span>Updating Password...</span>
+              </>
+            ) : (
+              <>
+                <span>Save Password &amp; Continue to Profile</span>
+                <ArrowRight className="w-4 h-4 text-[#E8213A]" />
+              </>
+            )}
           </button>
         </form>
       </main>

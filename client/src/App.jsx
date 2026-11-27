@@ -3,6 +3,7 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 import { ThemeProvider } from './context/ThemeContext';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { RequireAdminAuth, RequireStudentAuth } from './components/ProtectedRoute';
+import ErrorBoundary from './components/ErrorBoundary';
 import { PORTAL_CONFIG } from './config/portalConfig';
 
 // Admin / HOD Pages
@@ -100,10 +101,12 @@ function PortalRouter() {
 
 export default function App() {
   return (
-    <ThemeProvider>
-      <AuthProvider>
-        <PortalRouter />
-      </AuthProvider>
-    </ThemeProvider>
+    <ErrorBoundary>
+      <ThemeProvider>
+        <AuthProvider>
+          <PortalRouter />
+        </AuthProvider>
+      </ThemeProvider>
+    </ErrorBoundary>
   );
 }
