@@ -30,7 +30,13 @@ import {
   Download,
   Eye,
   User,
-  UserPlus
+  UserPlus,
+  Key,
+  UserX,
+  UserCheck,
+  Trash2,
+  Copy,
+  Check
 } from 'lucide-react';
 import BRANDING from '../../config/branding';
 import CollegeLogo from '../../components/CollegeLogo';
@@ -57,7 +63,10 @@ export default function AdminDashboardPage() {
     updateRequests,
     createStudentAccount,
     createYearSpecificUpdateRequest,
-    isStudentSubmittedForRequest
+    isStudentSubmittedForRequest,
+    resetStudentPassword,
+    updateStudentStatus,
+    deleteStudentAccount
   } = useAuth();
 
   // Navigation tab strictly limited to the 4 required sections:
@@ -77,10 +86,36 @@ export default function AdminDashboardPage() {
   const [filterSemester, setFilterSemester] = useState('All');
   const [filterLocation, setFilterLocation] = useState('All');
   const [filterOnboardingStatus, setFilterOnboardingStatus] = useState('All'); // 'All' | 'Profile Completed' | 'Profile Pending' | 'Inactive'
+  const [filterBacklogStatus, setFilterBacklogStatus] = useState('All'); // 'All' | 'No Backlogs' | 'With Backlogs' | 'Not Provided'
+  const [filterBacklogMin, setFilterBacklogMin] = useState('');
 
   // Modal: Add Student Account
   const [isAddStudentOpen, setIsAddStudentOpen] = useState(false);
   const [toastMessage, setToastMessage] = useState(null);
+
+  // Administrative Account Action Modals
+  const [resetModalStudent, setResetModalStudent] = useState(null);
+  const [tempPasswordResult, setTempPasswordResult] = useState(null);
+  const [isResetting, setIsResetting] = useState(false);
+  const [copiedPass, setCopiedPass] = useState(false);
+
+  const [statusModalStudent, setStatusModalStudent] = useState(null);
+  const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
+
+  const [deleteModalStudent, setDeleteModalStudent] = useState(null);
+  const [deleteConfirmRegNo, setDeleteConfirmRegNo] = useState('');
+  const [isDeletingStudent, setIsDeletingStudent] = useState(false);
+
+  // Dynamic Location options extracted from actual student records + standard institutional locations
+  const availableLocations = useMemo(() => {
+    const locSet = new Set(['Vijayawada', 'Guntur', 'Kanchikacherla', 'Nandigama', 'Jaggaiahpet', 'Ibrahimpatnam', 'Tiruvuru', 'Mangalagiri']);
+    students.forEach((s) => {
+      if (s.location && s.location !== 'Not Provided' && s.location.trim() && s.location.toLowerCase() !== 'other') {
+        locSet.add(s.location.trim());
+      }
+    });
+    return ['All', ...Array.from(locSet).sort()];
+  }, [students]);
 
   // Comparison filters (Evaluates SSC %, Inter/Diploma %, and CGPA)
   const [sscOp, setSscOp] = useState('all');
@@ -102,6 +137,8 @@ export default function AdminDashboardPage() {
     semester: 'All',
     location: 'All',
     status: 'All',
+    backlogStatus: 'All',
+    backlogMin: '',
     ssc: { op: 'all', v1: '', v2: '' },
     inter: { op: 'all', v1: '', v2: '' },
     cgpa: { op: 'all', v1: '', v2: '' },
@@ -116,6 +153,8 @@ export default function AdminDashboardPage() {
     if (appliedFilters.semester !== 'All') count++;
     if (appliedFilters.location !== 'All') count++;
     if (appliedFilters.status !== 'All') count++;
+    if (appliedFilters.backlogStatus !== 'All') count++;
+    if (appliedFilters.backlogMin) count++;
     if (appliedFilters.ssc.op !== 'all') count++;
     if (appliedFilters.inter.op !== 'all') count++;
     if (appliedFilters.cgpa.op !== 'all') count++;
@@ -139,6 +178,8 @@ export default function AdminDashboardPage() {
       semester: filterSemester,
       location: filterLocation,
       status: filterOnboardingStatus,
+      backlogStatus: filterBacklogStatus,
+      backlogMin: filterBacklogMin,
       ssc: { op: sscOp, v1: sscVal1, v2: sscVal2 },
       inter: { op: interOp, v1: interVal1, v2: interVal2 },
       cgpa: { op: cgpaOp, v1: cgpaVal1, v2: cgpaVal2 },
@@ -170,6 +211,8 @@ export default function AdminDashboardPage() {
     setFilterSemester('All');
     setFilterLocation('All');
     setFilterOnboardingStatus('All');
+    setFilterBacklogStatus('All');
+    setFilterBacklogMin('');
     setSscOp('all'); setSscVal1(''); setSscVal2('');
     setInterOp('all'); setInterVal1(''); setInterVal2('');
     setCgpaOp('all'); setCgpaVal1(''); setCgpaVal2('');
@@ -181,6 +224,8 @@ export default function AdminDashboardPage() {
       semester: 'All',
       location: 'All',
       status: 'All',
+      backlogStatus: 'All',
+      backlogMin: '',
       ssc: { op: 'all', v1: '', v2: '' },
       inter: { op: 'all', v1: '', v2: '' },
       cgpa: { op: 'all', v1: '', v2: '' },
@@ -260,6 +305,27 @@ export default function AdminDashboardPage() {
       }
       if (appliedFilters.location !== 'All' && s.location !== appliedFilters.location) {
         return false;
+      }
+
+      // Backlog Status Filter
+      if (appliedFilters.backlogStatus !== 'All') {
+        const hasBk = s.hasBacklogs ?? s.has_backlogs;
+        if (appliedFilters.backlogStatus === 'No Backlogs') {
+          if (hasBk !== false) return false;
+        } else if (appliedFilters.backlogStatus === 'With Backlogs') {
+          if (hasBk !== true) return false;
+        } else if (appliedFilters.backlogStatus === 'Not Provided') {
+          if (hasBk !== null && hasBk !== undefined) return false;
+        }
+      }
+
+      // Backlog Minimum Count Filter
+      if (appliedFilters.backlogMin) {
+        const minBk = parseInt(appliedFilters.backlogMin, 10);
+        if (!isNaN(minBk)) {
+          const count = s.backlogCount ?? s.backlog_count ?? (s.hasBacklogs || s.has_backlogs ? 1 : 0);
+          if (count < minBk) return false;
+        }
       }
       if (!evalComp(s.sscPercentage, appliedFilters.ssc.op, appliedFilters.ssc.v1, appliedFilters.ssc.v2)) {
         return false;
@@ -458,6 +524,27 @@ export default function AdminDashboardPage() {
     { header: 'Location', accessor: 'location' },
     { header: 'Year', accessor: 'year' },
     { header: 'Current Term', accessor: 'term' },
+    { 
+      header: 'Backlog Status', 
+      accessor: s => {
+        if (s.hasBacklogs === false || s.has_backlogs === false) return 'No Backlogs';
+        if (s.hasBacklogs === true || s.has_backlogs === true) {
+          const count = s.backlogCount ?? s.backlog_count ?? 1;
+          return `${count} Backlog${count > 1 ? 's' : ''}`;
+        }
+        return 'Not Provided';
+      },
+      align: 'center'
+    },
+    { 
+      header: 'Backlog Count', 
+      accessor: s => {
+        if (s.hasBacklogs === false || s.has_backlogs === false) return 0;
+        if (s.hasBacklogs === true || s.has_backlogs === true) return s.backlogCount ?? s.backlog_count ?? 1;
+        return '—';
+      },
+      align: 'center'
+    },
     { header: 'SSC %', accessor: s => `${s.sscPercentage}%`, align: 'center' },
     { header: 'Inter/Diploma %', accessor: s => `${s.interPercentage}% (${s.interType})`, align: 'center' },
     { header: 'Latest Sem', accessor: s => getStudentLatestAcademics(s).latestSemester, align: 'center' },
@@ -1266,12 +1353,44 @@ export default function AdminDashboardPage() {
                     onChange={(e) => setFilterLocation(e.target.value)}
                     className="w-full p-2 rounded-xl border border-slate-300 bg-white text-slate-800 outline-none focus:ring-1 focus:ring-[#4A192B]"
                   >
-                    {locationOptions.map((loc) => (
+                    {availableLocations.map((loc) => (
                       <option key={loc} value={loc}>
                         {loc === 'All' ? 'All Locations' : loc}
                       </option>
                     ))}
                   </select>
+                </div>
+
+                {/* Filter by Backlog Status */}
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">
+                    Backlog Standing
+                  </label>
+                  <select
+                    value={filterBacklogStatus}
+                    onChange={(e) => setFilterBacklogStatus(e.target.value)}
+                    className="w-full p-2 rounded-xl border border-slate-300 bg-white text-slate-800 outline-none focus:ring-1 focus:ring-[#4A192B]"
+                  >
+                    <option value="All">All Backlog Statuses</option>
+                    <option value="No Backlogs">No Backlogs (Clean Record)</option>
+                    <option value="With Backlogs">With Backlogs</option>
+                    <option value="Not Provided">Not Provided (Legacy)</option>
+                  </select>
+                </div>
+
+                {/* Filter by Minimum Backlog Count */}
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">
+                    Min Backlogs
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    placeholder="Min count (e.g. 1)"
+                    value={filterBacklogMin}
+                    onChange={(e) => setFilterBacklogMin(e.target.value)}
+                    className="w-full p-2 rounded-xl border border-slate-300 bg-white text-slate-800 outline-none focus:ring-1 focus:ring-[#4A192B]"
+                  />
                 </div>
               </div>
 
@@ -1416,6 +1535,7 @@ export default function AdminDashboardPage() {
                       <th className="py-3 px-3 font-bold">Student Name</th>
                       <th className="py-3 px-3 font-bold">Register Number</th>
                       <th className="py-3 px-3 font-bold text-center">Profile Status</th>
+                      <th className="py-3 px-3 font-bold text-center">Backlogs</th>
                       <th className="py-3 px-3 font-bold">Location</th>
                       <th className="py-3 px-2 font-bold">Year</th>
                       <th className="py-3 px-2 font-bold">Current Term</th>
@@ -1423,7 +1543,7 @@ export default function AdminDashboardPage() {
                       <th className="py-3 px-3 font-bold text-center">Inter / Diploma %</th>
                       <th className="py-3 px-2 font-bold text-center">Latest Sem</th>
                       <th className="py-3 px-3 font-bold text-center">Latest CGPA</th>
-                      <th className="py-3 px-3 font-bold text-center">Action</th>
+                      <th className="py-3 px-3 font-bold text-center">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 text-slate-800">
@@ -1485,7 +1605,7 @@ export default function AdminDashboardPage() {
                                   <Clock className="w-3 h-3 text-amber-600" />
                                   <span>Profile Pending</span>
                                 </span>
-                              ) : std.onboardingStatus === 'Inactive' ? (
+                              ) : std.onboardingStatus === 'Inactive' || std.is_active === false ? (
                                 <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-600 border border-slate-300">
                                   <span>Inactive</span>
                                 </span>
@@ -1494,6 +1614,23 @@ export default function AdminDashboardPage() {
                                   <CheckCircle2 className="w-3 h-3 text-emerald-600" />
                                   <span>Profile Completed</span>
                                 </span>
+                              )}
+                            </td>
+
+                            {/* 4B. Backlogs */}
+                            <td className="py-2.5 px-3 text-center">
+                              {std.hasBacklogs === false || std.has_backlogs === false ? (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                  <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                                  <span>No Backlogs</span>
+                                </span>
+                              ) : std.hasBacklogs === true || std.has_backlogs === true ? (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200">
+                                  <AlertCircle className="w-3 h-3 text-rose-600" />
+                                  <span>{std.backlogCount ?? std.backlog_count ?? 1} Backlog{(std.backlogCount ?? std.backlog_count ?? 1) > 1 ? 's' : ''}</span>
+                                </span>
+                              ) : (
+                                <span className="text-[10px] text-slate-400 italic">Not Provided</span>
                               )}
                             </td>
 
@@ -1547,17 +1684,58 @@ export default function AdminDashboardPage() {
                               {latest.latestCgpa !== null ? latest.latestCgpa.toFixed(2) : '—'}
                             </td>
 
-                            {/* 12. View Action Button */}
+                            {/* 12. Actions Group */}
                             <td className="py-2.5 px-3 text-center">
-                              <button
-                                type="button"
-                                onClick={() => setViewingStudentId(std.id)}
-                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#4A192B] hover:bg-[#35101E] active:scale-95 text-white font-bold text-xs shadow-xs transition-all cursor-pointer"
-                                title={`View complete profile of ${std.name} (${std.registerNumber})`}
-                              >
-                                <Eye className="w-3.5 h-3.5 text-[#FF6B1A]" />
-                                <span>View</span>
-                              </button>
+                              <div className="flex items-center justify-center gap-1.5">
+                                <button
+                                  type="button"
+                                  onClick={() => setViewingStudentId(std.id)}
+                                  className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-[#4A192B] hover:bg-[#35101E] active:scale-95 text-white font-bold text-xs shadow-xs transition-all cursor-pointer"
+                                  title={`View complete profile of ${std.name} (${std.registerNumber})`}
+                                >
+                                  <Eye className="w-3.5 h-3.5 text-[#FF6B1A]" />
+                                  <span>View</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setResetModalStudent(std);
+                                    setTempPasswordResult(null);
+                                    setCopiedPass(false);
+                                  }}
+                                  className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 transition-all cursor-pointer"
+                                  title="Reset Student Password"
+                                >
+                                  <Key className="w-3.5 h-3.5 text-[#4A192B]" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setStatusModalStudent(std)}
+                                  className={`p-1.5 rounded-lg transition-all cursor-pointer ${
+                                    std.is_active || std.studentStatus === 'Active'
+                                      ? 'bg-amber-50 hover:bg-amber-100 text-amber-800'
+                                      : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-800'
+                                  }`}
+                                  title={std.is_active || std.studentStatus === 'Active' ? 'Deactivate Student' : 'Reactivate Student'}
+                                >
+                                  {std.is_active || std.studentStatus === 'Active' ? (
+                                    <UserX className="w-3.5 h-3.5" />
+                                  ) : (
+                                    <UserCheck className="w-3.5 h-3.5" />
+                                  )}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setDeleteModalStudent(std);
+                                    setDeleteConfirmRegNo('');
+                                  }}
+                                  className="p-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 transition-all cursor-pointer"
+                                  title="Delete Student"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
                             </td>
                           </tr>
                         );
@@ -1650,12 +1828,13 @@ export default function AdminDashboardPage() {
                             </span>
                           </div>
                           <div className="p-2 rounded-xl bg-slate-50 border border-slate-200">
-                            <span className="text-slate-400 block text-[9px] uppercase font-bold">Prior Education</span>
+                            <span className="text-slate-400 block text-[9px] uppercase font-bold">Backlogs</span>
                             <span className="font-bold text-slate-800">
-                              {std.sscPercentage !== null ? `SSC: ${std.sscPercentage}%` : 'SSC: Not Provided'}
-                            </span>
-                            <span className="block text-[10px] text-slate-500">
-                              {std.interPercentage !== null ? `${std.interType || 'Inter'}: ${std.interPercentage}%` : 'Inter: Not Provided'}
+                              {std.hasBacklogs === false || std.has_backlogs === false
+                                ? 'No Backlogs'
+                                : std.hasBacklogs === true || std.has_backlogs === true
+                                ? `${std.backlogCount ?? std.backlog_count ?? 1} Backlog(s)`
+                                : 'Not Provided'}
                             </span>
                           </div>
                           <div className="p-2 rounded-xl bg-slate-50 border border-slate-200">
@@ -1667,15 +1846,54 @@ export default function AdminDashboardPage() {
                           </div>
                         </div>
 
-                        {/* View Complete Profile Action Button */}
-                        <div className="pt-2 border-t border-slate-100">
+                        {/* Card Action Buttons */}
+                        <div className="pt-2 border-t border-slate-100 flex items-center gap-2">
                           <button
                             type="button"
                             onClick={() => setViewingStudentId(std.id)}
-                            className="w-full py-2.5 px-3 rounded-xl bg-[#4A192B] hover:bg-[#35101E] active:scale-[0.99] text-white font-bold text-xs flex items-center justify-center gap-2 shadow-xs transition-all cursor-pointer"
+                            className="flex-1 py-2 px-3 rounded-xl bg-[#4A192B] hover:bg-[#35101E] active:scale-[0.99] text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-xs transition-all cursor-pointer"
                           >
-                            <Eye className="w-4 h-4 text-[#FF6B1A]" />
-                            <span>View Complete Profile</span>
+                            <Eye className="w-3.5 h-3.5 text-[#FF6B1A]" />
+                            <span>View Profile</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setResetModalStudent(std);
+                              setTempPasswordResult(null);
+                              setCopiedPass(false);
+                            }}
+                            className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-[#4A192B] transition-all cursor-pointer"
+                            title="Reset Password"
+                          >
+                            <Key className="w-4 h-4" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setStatusModalStudent(std)}
+                            className={`p-2 rounded-xl transition-all cursor-pointer ${
+                              std.is_active || std.studentStatus === 'Active'
+                                ? 'bg-amber-100 text-amber-900'
+                                : 'bg-emerald-100 text-emerald-900'
+                            }`}
+                            title={std.is_active || std.studentStatus === 'Active' ? 'Deactivate' : 'Reactivate'}
+                          >
+                            {std.is_active || std.studentStatus === 'Active' ? (
+                              <UserX className="w-4 h-4" />
+                            ) : (
+                              <UserCheck className="w-4 h-4" />
+                            )}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setDeleteModalStudent(std);
+                              setDeleteConfirmRegNo('');
+                            }}
+                            className="p-2 rounded-xl bg-rose-100 hover:bg-rose-200 text-rose-800 transition-all cursor-pointer"
+                            title="Delete Student"
+                          >
+                            <Trash2 className="w-4 h-4" />
                           </button>
                         </div>
                       </div>
@@ -2354,7 +2572,371 @@ export default function AdminDashboardPage() {
         isOpen={Boolean(selectedStudentForModal)}
         onClose={() => setViewingStudentId(null)}
         latestAcademics={selectedStudentForModal ? getStudentLatestAcademics(selectedStudentForModal) : null}
+        onResetPassword={(std) => {
+          setViewingStudentId(null);
+          setResetModalStudent(std);
+          setTempPasswordResult(null);
+          setCopiedPass(false);
+        }}
+        onToggleStatus={(std) => {
+          setViewingStudentId(null);
+          setStatusModalStudent(std);
+        }}
+        onDeleteStudent={(std) => {
+          setViewingStudentId(null);
+          setDeleteModalStudent(std);
+          setDeleteConfirmRegNo('');
+        }}
       />
+
+      {/* 1. RESET PASSWORD MODAL */}
+      {resetModalStudent && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 border border-[#C1C8B7] shadow-2xl space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2 text-[#4A192B]">
+                <Key className="w-5 h-5 text-[#FF6B1A]" />
+                <h3 className="font-extrabold text-base text-slate-900">Reset Student Password</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setResetModalStudent(null)}
+                className="p-1 rounded-full text-slate-400 hover:text-slate-700 hover:bg-slate-100 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {!tempPasswordResult ? (
+              <div className="space-y-4 text-xs text-slate-700">
+                <p>
+                  You are about to reset the login credentials for student{' '}
+                  <strong className="text-slate-900 font-bold">{resetModalStudent.name || resetModalStudent.registerNumber}</strong> ({resetModalStudent.registerNumber}).
+                </p>
+                <div className="p-3 rounded-2xl bg-amber-50 border border-amber-200 text-amber-900 space-y-1">
+                  <p className="font-bold flex items-center gap-1.5">
+                    <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+                    <span>Security Requirements</span>
+                  </p>
+                  <p className="text-[11px] text-amber-800">
+                    A cryptographically secure temporary password will be generated. The student will be flagged with mandatory password change and must set a new password on their next login.
+                  </p>
+                </div>
+                <div className="flex items-center justify-end gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setResetModalStudent(null)}
+                    disabled={isResetting}
+                    className="px-4 py-2 rounded-xl text-slate-600 hover:bg-slate-100 font-bold text-xs cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    disabled={isResetting}
+                    onClick={async () => {
+                      setIsResetting(true);
+                      try {
+                        const res = await resetStudentPassword(resetModalStudent.id);
+                        if (res && res.success) {
+                          setTempPasswordResult(res.temporaryPassword);
+                          setToastMessage(`Password reset successfully for ${resetModalStudent.registerNumber}.`);
+                          setTimeout(() => setToastMessage(null), 5000);
+                        } else {
+                          alert(res?.error || 'Failed to reset student password.');
+                        }
+                      } catch (err) {
+                        alert(err?.message || 'Error occurred while resetting password.');
+                      } finally {
+                        setIsResetting(false);
+                      }
+                    }}
+                    className="px-4 py-2 rounded-xl bg-[#4A192B] hover:bg-[#35101E] text-white font-bold text-xs shadow-md cursor-pointer flex items-center gap-1.5"
+                  >
+                    {isResetting ? <Clock className="w-3.5 h-3.5 animate-spin" /> : <Key className="w-3.5 h-3.5 text-[#FF6B1A]" />}
+                    <span>{isResetting ? 'Resetting...' : 'Generate New Password'}</span>
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-4 text-xs text-slate-700">
+                <div className="p-3.5 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-900">
+                  <p className="font-bold flex items-center gap-1.5">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <span>Temporary Password Generated</span>
+                  </p>
+                  <p className="text-[11px] text-emerald-800 mt-1">
+                    Copy and deliver this password to the student securely. It is displayed only once.
+                  </p>
+                </div>
+
+                <div className="p-3.5 rounded-2xl bg-slate-100 border border-slate-300 flex items-center justify-between gap-2">
+                  <div className="font-mono text-sm font-black text-[#4A192B] tracking-wider select-all">
+                    {tempPasswordResult}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigator.clipboard.writeText(tempPasswordResult);
+                      setCopiedPass(true);
+                      setTimeout(() => setCopiedPass(false), 3000);
+                    }}
+                    className={`px-3 py-1.5 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer ${
+                      copiedPass ? 'bg-emerald-600 text-white' : 'bg-[#4A192B] hover:bg-[#35101E] text-white'
+                    }`}
+                  >
+                    {copiedPass ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                    <span>{copiedPass ? 'Copied!' : 'Copy'}</span>
+                  </button>
+                </div>
+
+                <div className="flex justify-end pt-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setResetModalStudent(null);
+                      setTempPasswordResult(null);
+                    }}
+                    className="px-5 py-2 rounded-xl bg-[#4A192B] text-white font-bold text-xs shadow-md cursor-pointer"
+                  >
+                    Done
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* 2. TOGGLE DEACTIVATE / REACTIVATE MODAL */}
+      {statusModalStudent && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 border border-[#C1C8B7] shadow-2xl space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2 text-[#4A192B]">
+                {statusModalStudent.is_active || statusModalStudent.studentStatus === 'Active' ? (
+                  <UserX className="w-5 h-5 text-amber-600" />
+                ) : (
+                  <UserCheck className="w-5 h-5 text-emerald-600" />
+                )}
+                <h3 className="font-extrabold text-base text-slate-900">
+                  {statusModalStudent.is_active || statusModalStudent.studentStatus === 'Active'
+                    ? 'Deactivate Student Account'
+                    : 'Reactivate Student Account'}
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setStatusModalStudent(null)}
+                className="p-1 rounded-full text-slate-400 hover:text-slate-700 hover:bg-slate-100 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-4 text-xs text-slate-700">
+              <p>
+                Student:{' '}
+                <strong className="text-slate-900 font-bold">{statusModalStudent.name || statusModalStudent.registerNumber}</strong> ({statusModalStudent.registerNumber}).
+              </p>
+              {statusModalStudent.is_active || statusModalStudent.studentStatus === 'Active' ? (
+                <div className="p-3 rounded-2xl bg-amber-50 border border-amber-200 text-amber-900 space-y-1">
+                  <p className="font-bold flex items-center gap-1.5">
+                    <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+                    <span>Safe Account Preservation</span>
+                  </p>
+                  <p className="text-[11px] text-amber-800">
+                    Deactivating this account blocks login access immediately. All historical semester CGPAs, campaign submissions, and audit records remain completely preserved in the database and can be reactivated anytime.
+                  </p>
+                </div>
+              ) : (
+                <div className="p-3 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-900 space-y-1">
+                  <p className="font-bold flex items-center gap-1.5">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <span>Restore Full Access</span>
+                  </p>
+                  <p className="text-[11px] text-emerald-800">
+                    Reactivating will restore the student&apos;s ability to sign in to the Student Portal and view their academic records.
+                  </p>
+                </div>
+              )}
+
+              <div className="flex items-center justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setStatusModalStudent(null)}
+                  disabled={isUpdatingStatus}
+                  className="px-4 py-2 rounded-xl text-slate-600 hover:bg-slate-100 font-bold text-xs cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={isUpdatingStatus}
+                  onClick={async () => {
+                    setIsUpdatingStatus(true);
+                    const newActive = !(statusModalStudent.is_active || statusModalStudent.studentStatus === 'Active');
+                    try {
+                      const res = await updateStudentStatus(statusModalStudent.id, newActive);
+                      if (res && res.success) {
+                        setToastMessage(`Student ${statusModalStudent.registerNumber} ${newActive ? 'reactivated' : 'deactivated'} successfully.`);
+                        setTimeout(() => setToastMessage(null), 5000);
+                        setStatusModalStudent(null);
+                      } else {
+                        alert(res?.error || 'Failed to update student status.');
+                      }
+                    } catch (err) {
+                      alert(err?.message || 'Error occurred while updating student status.');
+                    } finally {
+                      setIsUpdatingStatus(false);
+                    }
+                  }}
+                  className={`px-4 py-2 rounded-xl text-white font-bold text-xs shadow-md cursor-pointer flex items-center gap-1.5 ${
+                    statusModalStudent.is_active || statusModalStudent.studentStatus === 'Active'
+                      ? 'bg-amber-600 hover:bg-amber-700'
+                      : 'bg-emerald-600 hover:bg-emerald-700'
+                  }`}
+                >
+                  {isUpdatingStatus && <Clock className="w-3.5 h-3.5 animate-spin" />}
+                  <span>
+                    {isUpdatingStatus
+                      ? 'Updating...'
+                      : statusModalStudent.is_active || statusModalStudent.studentStatus === 'Active'
+                      ? 'Confirm Deactivation'
+                      : 'Confirm Reactivation'}
+                  </span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 3. PERMANENT DELETE MODAL WITH INSTITUTIONAL RETENTION SAFEGUARD */}
+      {deleteModalStudent && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 border border-rose-200 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-rose-100">
+              <div className="flex items-center gap-2 text-rose-700">
+                <Trash2 className="w-5 h-5 text-rose-600" />
+                <h3 className="font-extrabold text-base text-slate-900">Permanent Student Deletion</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setDeleteModalStudent(null)}
+                className="p-1 rounded-full text-slate-400 hover:text-slate-700 hover:bg-slate-100 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Check for existing semester or campaign records */}
+            {deleteModalStudent.semesterRecords && deleteModalStudent.semesterRecords.filter(r => r.status === 'Updated' || r.cgpa !== null).length > 0 ? (
+              <div className="space-y-4 text-xs text-slate-700">
+                <div className="p-3.5 rounded-2xl bg-rose-50 border border-rose-200 text-rose-900 space-y-2">
+                  <p className="font-bold flex items-center gap-1.5 text-rose-700">
+                    <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                    <span>Permanent Deletion Blocked – Institutional Data Retention</span>
+                  </p>
+                  <p className="text-[11px] leading-relaxed text-rose-800">
+                    This student has <strong>{deleteModalStudent.semesterRecords.filter(r => r.status === 'Updated' || r.cgpa !== null).length} validated semester CGPA record(s)</strong> attached.
+                    Under institutional data retention policy, accounts with academic records cannot be permanently destroyed.
+                  </p>
+                  <p className="text-[11px] font-semibold text-rose-900">
+                    Recommended Safe Action: Use <strong>Deactivate Student</strong> to revoke login access while permanently preserving the department academic archive.
+                  </p>
+                </div>
+                <div className="flex justify-end gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setDeleteModalStudent(null)}
+                    className="px-4 py-2 rounded-xl text-slate-600 hover:bg-slate-100 font-bold text-xs cursor-pointer"
+                  >
+                    Close
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const std = deleteModalStudent;
+                      setDeleteModalStudent(null);
+                      setStatusModalStudent(std);
+                    }}
+                    className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs shadow-md cursor-pointer"
+                  >
+                    Deactivate Instead
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-4 text-xs text-slate-700">
+                <p>
+                  Student:{' '}
+                  <strong className="text-slate-900 font-bold">{deleteModalStudent.name || deleteModalStudent.registerNumber}</strong> ({deleteModalStudent.registerNumber}).
+                </p>
+                <div className="p-3 rounded-2xl bg-rose-50 border border-rose-200 text-rose-900 space-y-1">
+                  <p className="font-bold">Permanent Destructive Action</p>
+                  <p className="text-[11px] text-rose-800">
+                    This student has 0 historical semester records. Deletion will permanently erase the student profile, photo, database row, and authentication credentials. This cannot be undone.
+                  </p>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="block font-bold text-slate-800 text-[11px]">
+                    Type student register number <span className="font-mono text-rose-700">{deleteModalStudent.registerNumber}</span> to confirm:
+                  </label>
+                  <input
+                    type="text"
+                    value={deleteConfirmRegNo}
+                    onChange={(e) => setDeleteConfirmRegNo(e.target.value)}
+                    placeholder={deleteModalStudent.registerNumber}
+                    className="w-full p-2 rounded-xl border border-rose-300 font-mono text-xs uppercase outline-none focus:ring-1 focus:ring-rose-600"
+                  />
+                </div>
+
+                <div className="flex items-center justify-end gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setDeleteModalStudent(null)}
+                    disabled={isDeletingStudent}
+                    className="px-4 py-2 rounded-xl text-slate-600 hover:bg-slate-100 font-bold text-xs cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    disabled={isDeletingStudent || deleteConfirmRegNo.trim().toUpperCase() !== deleteModalStudent.registerNumber.toUpperCase()}
+                    onClick={async () => {
+                      setIsDeletingStudent(true);
+                      try {
+                        const res = await deleteStudentAccount(deleteModalStudent.id, deleteConfirmRegNo.trim());
+                        if (res && res.success) {
+                          setToastMessage(`Student account "${deleteModalStudent.registerNumber}" deleted permanently.`);
+                          setTimeout(() => setToastMessage(null), 5000);
+                          setDeleteModalStudent(null);
+                        } else {
+                          alert(res?.error || 'Failed to delete student account.');
+                        }
+                      } catch (err) {
+                        alert(err?.message || 'Error occurred while deleting student.');
+                      } finally {
+                        setIsDeletingStudent(false);
+                      }
+                    }}
+                    className={`px-4 py-2 rounded-xl text-white font-bold text-xs shadow-md flex items-center gap-1.5 ${
+                      deleteConfirmRegNo.trim().toUpperCase() === deleteModalStudent.registerNumber.toUpperCase() && !isDeletingStudent
+                        ? 'bg-rose-600 hover:bg-rose-700 cursor-pointer'
+                        : 'bg-rose-300 cursor-not-allowed'
+                    }`}
+                  >
+                    {isDeletingStudent && <Clock className="w-3.5 h-3.5 animate-spin" />}
+                    <span>{isDeletingStudent ? 'Deleting...' : 'Delete Permanently'}</span>
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Add Student Account Modal (HOD Only - 2 Fields: Reg No & Initial Password) */}
       <CreateStudentModal

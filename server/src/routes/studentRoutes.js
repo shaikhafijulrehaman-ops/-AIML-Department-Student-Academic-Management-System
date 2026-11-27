@@ -414,8 +414,41 @@ router.post('/complete-profile', requireAuth, async (req, res, next) => {
     if (!location || location.length === 0) {
       return res.status(400).json({
         success: false,
-        error: 'Location is required before completing profile.'
+        error: 'Residential Location is required before completing profile.'
       });
+    }
+
+    if (location.toLowerCase() === 'other') {
+      return res.status(400).json({
+        success: false,
+        error: 'Please enter your actual village, town, or city name instead of "Other".'
+      });
+    }
+
+    // Backlog information validation (mandatory on profile completion)
+    const rawHasBacklogs = req.body.hasBacklogs ?? req.body.has_backlogs;
+    if (rawHasBacklogs === undefined || rawHasBacklogs === null) {
+      return res.status(400).json({
+        success: false,
+        error: 'Backlog status (Do you have any backlogs? Yes/No) is required.'
+      });
+    }
+
+    const hasBacklogs = Boolean(rawHasBacklogs === true || rawHasBacklogs === 'true' || rawHasBacklogs === 'yes');
+    let backlogCount = 0;
+
+    if (hasBacklogs) {
+      const rawCount = req.body.backlogCount ?? req.body.backlog_count;
+      const countNum = parseInt(rawCount, 10);
+      if (rawCount === undefined || rawCount === null || isNaN(countNum) || countNum < 1 || String(rawCount).includes('.')) {
+        return res.status(400).json({
+          success: false,
+          error: 'Number of backlogs must be a positive whole number (at least 1).'
+        });
+      }
+      backlogCount = countNum;
+    } else {
+      backlogCount = 0;
     }
 
     if (isNaN(currentYear) || currentYear < 2 || currentYear > 4) {
@@ -464,6 +497,8 @@ router.post('/complete-profile', requireAuth, async (req, res, next) => {
       qualification_type: qualificationType,
       ssc_percentage: sscPercentage,
       intermediate_percentage: intermediatePercentage,
+      has_backlogs: hasBacklogs,
+      backlog_count: backlogCount,
       profile_photo_path: profilePhotoPath,
       updated_at: new Date().toISOString()
     };
@@ -525,6 +560,8 @@ router.post('/complete-profile', requireAuth, async (req, res, next) => {
       qualificationType: updatedProfile.qualification_type,
       sscPercentage: updatedProfile.ssc_percentage,
       intermediatePercentage: updatedProfile.intermediate_percentage,
+      hasBacklogs: updatedProfile.has_backlogs,
+      backlogCount: updatedProfile.backlog_count,
       admissionYear: updatedProfile.admission_year,
       profilePhotoPath: updatedProfile.profile_photo_path,
       isProfileCompleted: true,
@@ -678,7 +715,7 @@ router.get('/profile', requireAuth, async (req, res, next) => {
   try {
     const { data: profile, error } = await supabaseAdmin
       .from('aiml_student_profiles')
-      .select('id, user_id, register_number, full_name, email, phone_number, location, current_year, current_term, qualification_type, ssc_percentage, intermediate_percentage, admission_year, profile_photo_path, is_active, must_change_password, is_profile_completed, created_at, updated_at')
+      .select('id, user_id, register_number, full_name, email, phone_number, location, current_year, current_term, qualification_type, ssc_percentage, intermediate_percentage, admission_year, profile_photo_path, has_backlogs, backlog_count, is_active, must_change_password, is_profile_completed, created_at, updated_at')
       .eq('user_id', req.user.id)
       .single();
 
@@ -813,6 +850,39 @@ router.put('/profile', requireAuth, async (req, res, next) => {
       if (!isNaN(interVal) && interVal >= 0 && interVal <= 100) {
         updatePayload.intermediate_percentage = interVal;
       }
+    }
+
+    if (req.body.location !== undefined) {
+      const loc = String(req.body.location).trim();
+      if (!loc || loc.toLowerCase() === 'other') {
+        return res.status(400).json({
+          success: false,
+          error: 'Please enter a valid residential location name.'
+        });
+      }
+      updatePayload.location = loc;
+    }
+
+    if (req.body.hasBacklogs !== undefined || req.body.has_backlogs !== undefined) {
+      const rawHas = req.body.hasBacklogs ?? req.body.has_backlogs;
+      const hasBacklogs = Boolean(rawHas === true || rawHas === 'true' || rawHas === 'yes');
+      let backlogCount = 0;
+
+      if (hasBacklogs) {
+        const rawCount = req.body.backlogCount ?? req.body.backlog_count;
+        const countNum = parseInt(rawCount, 10);
+        if (rawCount === undefined || rawCount === null || isNaN(countNum) || countNum < 1 || String(rawCount).includes('.')) {
+          return res.status(400).json({
+            success: false,
+            error: 'Number of backlogs must be a positive whole number (at least 1).'
+          });
+        }
+        backlogCount = countNum;
+      } else {
+        backlogCount = 0;
+      }
+      updatePayload.has_backlogs = hasBacklogs;
+      updatePayload.backlog_count = backlogCount;
     }
 
     // Only allow setting profile_photo_path if it's a valid storage path belonging to this user

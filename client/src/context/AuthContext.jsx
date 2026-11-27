@@ -69,6 +69,8 @@ export const AuthProvider = ({ children }) => {
             interPercentage: profile.intermediate_percentage || profile.intermediatePercentage,
             profilePhoto: profile.profile_photo_url || profile.profilePhotoUrl || profile.profile_photo_path || profile.profilePhotoPath,
             profilePhotoPath: profile.profile_photo_path || profile.profilePhotoPath,
+            hasBacklogs: profile.has_backlogs ?? profile.hasBacklogs ?? null,
+            backlogCount: profile.backlog_count ?? profile.backlogCount ?? null,
             mustChangePassword: Boolean(profile.must_change_password ?? profile.mustChangePassword ?? true),
             onboardingStatus: (profile.is_profile_completed || profile.isProfileCompleted) ? 'Profile Completed' : 'Profile Pending',
             studentStatus: (profile.is_active || profile.isActive) ? 'Active' : 'Inactive',
@@ -116,6 +118,8 @@ export const AuthProvider = ({ children }) => {
         interPercentage: s.intermediate_percentage,
         profilePhoto: s.profile_photo_url || s.profile_photo_path,
         profilePhotoPath: s.profile_photo_path,
+        hasBacklogs: s.has_backlogs ?? s.hasBacklogs ?? null,
+        backlogCount: s.backlog_count ?? s.backlogCount ?? null,
         mustChangePassword: Boolean(s.must_change_password),
         onboardingStatus: s.is_profile_completed ? 'Profile Completed' : 'Profile Pending',
         studentStatus: s.is_active ? 'Active' : 'Inactive',
@@ -209,6 +213,8 @@ export const AuthProvider = ({ children }) => {
           interPercentage: profile.intermediate_percentage || profile.intermediatePercentage,
           profilePhoto: profile.profile_photo_url || profile.profilePhotoUrl || profile.profile_photo_path || profile.profilePhotoPath,
           profilePhotoPath: profile.profile_photo_path || profile.profilePhotoPath,
+          hasBacklogs: profile.has_backlogs ?? profile.hasBacklogs ?? null,
+          backlogCount: profile.backlog_count ?? profile.backlogCount ?? null,
           mustChangePassword: Boolean(profile.must_change_password ?? profile.mustChangePassword ?? true),
           onboardingStatus: (profile.is_profile_completed || profile.isProfileCompleted) ? 'Profile Completed' : 'Profile Pending',
           studentStatus: (profile.is_active || profile.isActive) ? 'Active' : 'Inactive',
@@ -295,6 +301,8 @@ export const AuthProvider = ({ children }) => {
           sscPercentage: serverData.ssc_percentage ?? profileData.sscPercentage ?? prev.sscPercentage,
           interType: serverData.qualification_type ?? profileData.qualificationType ?? profileData.interType ?? prev.interType,
           interPercentage: serverData.intermediate_percentage ?? profileData.intermediatePercentage ?? profileData.interPercentage ?? prev.interPercentage,
+          hasBacklogs: serverData.has_backlogs ?? profileData.hasBacklogs ?? prev.hasBacklogs,
+          backlogCount: serverData.backlog_count ?? profileData.backlogCount ?? prev.backlogCount,
           profilePhoto: serverData.profile_photo_url || res.signedUrl || prev.profilePhoto
         };
       });
@@ -390,6 +398,31 @@ export const AuthProvider = ({ children }) => {
     return Boolean(record && record.cgpa !== null && record.status === 'Updated');
   };
 
+  // Administrative Student Actions (HOD)
+  const resetStudentPassword = async (studentId) => {
+    const res = await api.resetStudentPassword(studentId);
+    if (res.success) {
+      await refreshHodData();
+    }
+    return res;
+  };
+
+  const updateStudentStatus = async (studentId, isActive) => {
+    const res = await api.updateStudentStatus(studentId, isActive);
+    if (res.success) {
+      await refreshHodData();
+    }
+    return res;
+  };
+
+  const deleteStudentAccount = async (studentId, confirmationRegisterNumber) => {
+    const res = await api.deleteStudentAccount(studentId, confirmationRegisterNumber);
+    if (res.success) {
+      await refreshHodData();
+    }
+    return res;
+  };
+
   const logout = () => {
     api.clearAuthToken();
     setCurrentRole(null);
@@ -423,6 +456,9 @@ export const AuthProvider = ({ children }) => {
         submitSemesterCgpa,
         createYearSpecificUpdateRequest,
         isStudentSubmittedForRequest,
+        resetStudentPassword,
+        updateStudentStatus,
+        deleteStudentAccount,
         refreshHodData
       }}
     >

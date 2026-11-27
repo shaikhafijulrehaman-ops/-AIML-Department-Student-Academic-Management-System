@@ -26,14 +26,50 @@ export default function StudentCompleteProfileView({ student, onCompleteProfile,
   );
   const [email, setEmail] = useState(student.email || '');
   const [phone, setPhone] = useState(student.phone || '');
-  const [location, setLocation] = useState(
-    student.location && student.location !== 'Not Provided' ? student.location : 'Vijayawada'
-  );
+
+  const locationOptions = [
+    'Vijayawada',
+    'Guntur',
+    'Kanchikacherla',
+    'Nandigama',
+    'Jaggaiahpet',
+    'Ibrahimpatnam',
+    'Tiruvuru',
+    'Mangalagiri',
+    'Nuzvid',
+    'Eluru',
+    'Tenali',
+    'Gudivada',
+    'Machilipatnam',
+    'Other'
+  ];
+
+  const initialLoc = student.location && student.location !== 'Not Provided' ? student.location.trim() : 'Vijayawada';
+  const isPredefined = locationOptions.filter(l => l !== 'Other').includes(initialLoc);
+  const [selectedLocation, setSelectedLocation] = useState(isPredefined ? initialLoc : 'Other');
+  const [customLocation, setCustomLocation] = useState(isPredefined ? '' : initialLoc);
+
   const [year, setYear] = useState('3rd Year');
   const [term, setTerm] = useState('3-1');
   const [uploadedPhotoPath, setUploadedPhotoPath] = useState(student.profilePhotoPath || student.profile_photo_path || null);
   const [photoPreview, setPhotoPreview] = useState(student.profilePhoto || student.profile_photo_url || null);
   const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
+
+  // Backlog state: null by default until student answers Yes/No
+  const [hasBacklogs, setHasBacklogs] = useState(
+    typeof student.hasBacklogs === 'boolean'
+      ? student.hasBacklogs
+      : typeof student.has_backlogs === 'boolean'
+      ? student.has_backlogs
+      : null
+  );
+  const [backlogCount, setBacklogCount] = useState(
+    student.backlogCount
+      ? String(student.backlogCount)
+      : student.backlog_count
+      ? String(student.backlog_count)
+      : ''
+  );
 
   // Previous Education
   const [sscPercentage, setSscPercentage] = useState('');
@@ -54,17 +90,6 @@ export default function StudentCompleteProfileView({ student, onCompleteProfile,
 
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
-
-  const locationOptions = [
-    'Vijayawada',
-    'Guntur',
-    'Kanchikacherla',
-    'Nandigama',
-    'Jaggaiahpet',
-    'Ibrahimpatnam',
-    'Tiruvuru',
-    'Mangalagiri',
-  ];
 
   // Handle year change: strictly reset term if invalid
   const handleYearChange = (newYear) => {
@@ -185,12 +210,43 @@ export default function StudentCompleteProfileView({ student, onCompleteProfile,
       setError('Please provide a valid contact phone number.');
       return;
     }
-    if (!location.trim()) {
-      setError('Location is required.');
+
+    let finalLocation = selectedLocation;
+    if (selectedLocation === 'Other') {
+      const cleanCustom = customLocation.trim();
+      if (!cleanCustom) {
+        setError('Please enter your village, town, or city name.');
+        return;
+      }
+      if (cleanCustom.toLowerCase() === 'other') {
+        setError('Please enter your actual location name instead of "Other".');
+        return;
+      }
+      finalLocation = cleanCustom;
+    }
+    if (!finalLocation || finalLocation.trim().length === 0) {
+      setError('Residential Location is required.');
       return;
     }
 
-    // 2. Validate Academic Year & Term
+    // 2. Validate Backlogs
+    if (hasBacklogs === null || hasBacklogs === undefined) {
+      setError('Please answer the question: Do you have any backlogs? (Yes / No).');
+      return;
+    }
+    let finalBacklogCount = 0;
+    if (hasBacklogs === true) {
+      const countNum = parseInt(backlogCount, 10);
+      if (isNaN(countNum) || countNum < 1 || String(backlogCount).includes('.')) {
+        setError('Number of Backlogs must be a positive whole number (at least 1).');
+        return;
+      }
+      finalBacklogCount = countNum;
+    } else {
+      finalBacklogCount = 0;
+    }
+
+    // 3. Validate Academic Year & Term
     const allowedTerms = getTermsForYear(year);
     if (!allowedTerms.includes(term)) {
       setError(`Invalid term for ${year}. Allowed terms are: ${allowedTerms.join(', ')}.`);
@@ -254,7 +310,9 @@ export default function StudentCompleteProfileView({ student, onCompleteProfile,
       email: email.trim(),
       phoneNumber: phone.trim(),
       phone: phone.trim(),
-      location: location.trim(),
+      location: finalLocation.trim(),
+      hasBacklogs: hasBacklogs,
+      backlogCount: finalBacklogCount,
       currentYear: parsedYear,
       year: parsedYear,
       currentTerm: parsedTerm,
@@ -458,8 +516,13 @@ export default function StudentCompleteProfileView({ student, onCompleteProfile,
                   <div className="relative">
                     <select
                       id="onboarding-location"
-                      value={location}
-                      onChange={(e) => setLocation(e.target.value)}
+                      value={selectedLocation}
+                      onChange={(e) => {
+                        setSelectedLocation(e.target.value);
+                        if (e.target.value !== 'Other') {
+                          setCustomLocation('');
+                        }
+                      }}
                       className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-slate-300 bg-white font-medium text-slate-900 outline-none focus:ring-2 focus:ring-[#5E8881]/20 focus:border-[#5E8881]"
                     >
                       {locationOptions.map((loc) => (
@@ -470,6 +533,22 @@ export default function StudentCompleteProfileView({ student, onCompleteProfile,
                     </select>
                     <MapPin className="w-4 h-4 text-slate-400 absolute left-3 top-3 pointer-events-none" />
                   </div>
+
+                  {selectedLocation === 'Other' && (
+                    <div className="mt-2.5">
+                      <label htmlFor="onboarding-custom-location" className="block font-bold text-slate-700 mb-1 text-xs">
+                        Enter Your Village / Town / City <span className="text-rose-600">*</span>
+                      </label>
+                      <input
+                        id="onboarding-custom-location"
+                        type="text"
+                        value={customLocation}
+                        onChange={(e) => setCustomLocation(e.target.value)}
+                        placeholder="e.g. Bhimavaram, Mylavaram, Vatsavai..."
+                        className="w-full p-2.5 rounded-xl border border-slate-300 bg-white font-medium text-slate-900 outline-none focus:ring-2 focus:ring-[#5E8881]/20 focus:border-[#5E8881]"
+                      />
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -483,7 +562,7 @@ export default function StudentCompleteProfileView({ student, onCompleteProfile,
               </div>
               <div>
                 <h3 className="font-bold text-sm text-slate-900">B. Academic Information</h3>
-                <p className="text-[11px] text-slate-500">Current enrolled cohort and term in AIML.</p>
+                <p className="text-[11px] text-slate-500">Current enrolled cohort, term, and backlog status in AIML.</p>
               </div>
             </div>
 
@@ -525,6 +604,59 @@ export default function StudentCompleteProfileView({ student, onCompleteProfile,
                 <span className="text-[10px] text-slate-500 mt-1 block">
                   Eligible terms restricted to {year}.
                 </span>
+              </div>
+
+              {/* Backlog Question */}
+              <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-3 sm:col-span-2">
+                <label className="block font-bold text-slate-800 text-xs sm:text-sm">
+                  Do you have any backlogs? <span className="text-rose-600">*</span>
+                </label>
+                <div className="flex items-center gap-6">
+                  <label className="flex items-center gap-2 cursor-pointer font-bold text-xs text-slate-700">
+                    <input
+                      type="radio"
+                      name="onboarding-backlogs"
+                      checked={hasBacklogs === true}
+                      onChange={() => {
+                        setHasBacklogs(true);
+                        if (!backlogCount || backlogCount === '0') setBacklogCount('1');
+                      }}
+                      className="w-4 h-4 text-[#5E8881] focus:ring-[#5E8881]"
+                    />
+                    <span>Yes</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer font-bold text-xs text-slate-700">
+                    <input
+                      type="radio"
+                      name="onboarding-backlogs"
+                      checked={hasBacklogs === false}
+                      onChange={() => {
+                        setHasBacklogs(false);
+                        setBacklogCount('0');
+                      }}
+                      className="w-4 h-4 text-[#5E8881] focus:ring-[#5E8881]"
+                    />
+                    <span>No</span>
+                  </label>
+                </div>
+
+                {hasBacklogs === true && (
+                  <div className="pt-2 max-w-xs">
+                    <label htmlFor="onboarding-backlog-count" className="block font-bold text-slate-700 mb-1 text-xs">
+                      Number of Backlogs <span className="text-rose-600">*</span>
+                    </label>
+                    <input
+                      id="onboarding-backlog-count"
+                      type="number"
+                      min="1"
+                      step="1"
+                      value={backlogCount}
+                      onChange={(e) => setBacklogCount(e.target.value)}
+                      placeholder="Enter positive whole number (e.g. 1, 2, 3...)"
+                      className="w-full p-2.5 rounded-xl border border-slate-300 bg-white font-bold text-slate-900 outline-none focus:ring-2 focus:ring-[#5E8881]/20 focus:border-[#5E8881]"
+                    />
+                  </div>
+                )}
               </div>
             </div>
           </section>

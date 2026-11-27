@@ -14,7 +14,11 @@ import {
   Clock, 
   AlertCircle,
   Building2,
-  FileText
+  FileText,
+  Key,
+  UserX,
+  Trash2,
+  ShieldCheck
 } from 'lucide-react';
 import { ALL_SEMESTER_TERMS, getMaxCompletedSemForTerm } from '../data/mockData';
 import { getBatchLabel, getMaxCompletedSemesters } from '../utils/academicYearMapping';
@@ -27,7 +31,15 @@ import { getBatchLabel, getMaxCompletedSemesters } from '../utils/academicYearMa
  * Strictly complies with AIML Department branding (Sage Fog, Claret Wine, Tangerine Flash)
  * Zero mentions of SGPA.
  */
-export default function StudentProfileModal({ student, isOpen, onClose, latestAcademics }) {
+export default function StudentProfileModal({ 
+  student, 
+  isOpen, 
+  onClose, 
+  latestAcademics,
+  onResetPassword,
+  onToggleStatus,
+  onDeleteStudent
+}) {
   // Prevent background scroll when modal is open
   useEffect(() => {
     if (isOpen) {
@@ -362,16 +374,121 @@ export default function StudentProfileModal({ student, isOpen, onClose, latestAc
                     </span>
                   </div>
                 </div>
+
+                {/* Backlog Standing Card */}
+                <div className="col-span-2 p-3.5 rounded-2xl bg-slate-50 border border-slate-200 flex items-center justify-between">
+                  <div>
+                    <span className="text-[10px] uppercase font-bold text-slate-500 block">
+                      Backlog Academic Status
+                    </span>
+                    <div className="mt-1">
+                      {student.hasBacklogs === false ? (
+                        <span className="inline-flex items-center gap-1.5 text-emerald-800 font-extrabold text-sm">
+                          <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                          <span>No Backlogs (Clean Record)</span>
+                        </span>
+                      ) : student.hasBacklogs === true ? (
+                        <span className="inline-flex items-center gap-1.5 text-rose-800 font-extrabold text-sm">
+                          <AlertCircle className="w-4 h-4 text-rose-600" />
+                          <span>{student.backlogCount || 1} Active Backlog{(student.backlogCount || 1) > 1 ? 's' : ''}</span>
+                        </span>
+                      ) : (
+                        <span className="text-slate-400 italic text-xs">Not Provided (Legacy Profile)</span>
+                      )}
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-[10px] text-slate-400 block uppercase font-bold">Total Count</span>
+                    <span className="text-sm font-mono font-extrabold text-slate-800">
+                      {student.hasBacklogs === true ? `${student.backlogCount || 1}` : student.hasBacklogs === false ? '0' : '—'}
+                    </span>
+                  </div>
+                </div>
               </div>
 
               <div className="p-2.5 rounded-xl bg-amber-50/70 border border-amber-200/80 text-[11px] text-amber-900 flex items-start gap-2">
                 <AlertCircle className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
                 <p>
-                  Previous education percentages are officially archived from verified admission certificates.
+                  Previous education percentages and backlog standing are officially archived department records.
                 </p>
               </div>
             </section>
           </div>
+
+          {/* SECTION 3B: ACCOUNT STATUS & HOD ADMINISTRATIVE CONTROLS */}
+          <section className="bg-white rounded-3xl p-5 border border-[#C1C8B7] shadow-sm space-y-4">
+            <div className="flex items-center justify-between pb-2.5 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <div className="w-7 h-7 rounded-lg bg-[#4A192B]/10 text-[#4A192B] flex items-center justify-center">
+                  <ShieldCheck className="w-4 h-4" />
+                </div>
+                <div>
+                  <h4 className="font-bold text-sm text-slate-900">Account Status &amp; Administrative Controls</h4>
+                  <p className="text-[11px] text-slate-500">Security flags, account status, and credential management.</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+              <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200">
+                <span className="text-[10px] uppercase font-bold text-slate-500 block">Account Status</span>
+                <span className={`font-extrabold text-sm mt-1 block ${student.is_active || student.studentStatus === 'Active' ? 'text-emerald-700' : 'text-slate-500'}`}>
+                  {student.is_active || student.studentStatus === 'Active' ? 'Active' : 'Inactive / Deactivated'}
+                </span>
+              </div>
+              <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200">
+                <span className="text-[10px] uppercase font-bold text-slate-500 block">Profile Onboarding</span>
+                <span className={`font-extrabold text-sm mt-1 block ${student.onboardingStatus === 'Profile Completed' ? 'text-emerald-700' : 'text-amber-700'}`}>
+                  {student.onboardingStatus || 'Profile Pending'}
+                </span>
+              </div>
+              <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200">
+                <span className="text-[10px] uppercase font-bold text-slate-500 block">Security Gate</span>
+                <span className="font-extrabold text-sm mt-1 block text-slate-800">
+                  {student.mustChangePassword ? 'Password Reset Pending' : 'Secure (Updated)'}
+                </span>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2.5 pt-1 border-t border-slate-100">
+              {onResetPassword && (
+                <button
+                  type="button"
+                  onClick={() => onResetPassword(student)}
+                  className="px-3.5 py-2 rounded-xl bg-[#4A192B] hover:bg-[#35101E] text-white text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-xs"
+                >
+                  <Key className="w-3.5 h-3.5 text-[#FF6B1A]" />
+                  <span>Reset Password</span>
+                </button>
+              )}
+
+              {onToggleStatus && (
+                <button
+                  type="button"
+                  onClick={() => onToggleStatus(student)}
+                  className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                    student.is_active || student.studentStatus === 'Active'
+                      ? 'bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-300'
+                      : 'bg-emerald-100 hover:bg-emerald-200 text-emerald-900 border border-emerald-300'
+                  }`}
+                >
+                  <UserX className="w-3.5 h-3.5" />
+                  <span>{student.is_active || student.studentStatus === 'Active' ? 'Deactivate Student' : 'Reactivate Student'}</span>
+                </button>
+              )}
+
+              {onDeleteStudent && (
+                <button
+                  type="button"
+                  onClick={() => onDeleteStudent(student)}
+                  className="px-3.5 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-800 border border-rose-200 text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ml-auto"
+                >
+                  <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                  <span>Delete Student</span>
+                </button>
+              )}
+            </div>
+          </section>
 
           {/* SECTION 4: B.TECH SEMESTER-WISE CGPA PERFORMANCE TABLE */}
           <section className="bg-white rounded-3xl p-5 sm:p-6 border border-[#C1C8B7] shadow-sm space-y-4">

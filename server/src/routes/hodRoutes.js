@@ -1,6 +1,39 @@
 import { Router } from 'express';
+import crypto from 'crypto';
 import { supabaseAdmin, isSupabaseAdminReady } from '../config/supabaseAdmin.js';
 import { requireAuth, requireHodRole, getDeterministicStudentEmail } from '../middleware/authMiddleware.js';
+
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+function isValidUUID(id) {
+  return typeof id === 'string' && UUID_REGEX.test(id.trim());
+}
+
+function generateSecureTemporaryPassword() {
+  const upper = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
+  const lower = 'abcdefghjkmnpqrstuvwxyz';
+  const numbers = '23456789';
+  const special = '!@#$%&*';
+  const all = upper + lower + numbers + special;
+
+  const bytes = crypto.randomBytes(12);
+  let pass = [
+    upper[bytes[0] % upper.length],
+    lower[bytes[1] % lower.length],
+    numbers[bytes[2] % numbers.length],
+    special[bytes[3] % special.length],
+  ];
+
+  for (let i = 4; i < 10; i++) {
+    pass.push(all[bytes[i] % all.length]);
+  }
+
+  for (let i = pass.length - 1; i > 0; i--) {
+    const j = bytes[i] % (i + 1);
+    [pass[i], pass[j]] = [pass[j], pass[i]];
+  }
+
+  return pass.join('');
+}
 
 const router = Router();
 
@@ -185,7 +218,7 @@ router.post('/students', async (req, res, next) => {
  */
 router.get('/students', async (req, res, next) => {
   try {
-    const { search, year, term, status, completion } = req.query;
+    const { search, year, term, status, completion, backlogStatus, minBacklogs, maxBacklogs, location } = req.query;
 
     let query = supabaseAdmin
       .from('aiml_student_profiles')
@@ -204,6 +237,8 @@ router.get('/students', async (req, res, next) => {
         intermediate_percentage,
         admission_year,
         profile_photo_path,
+        has_backlogs,
+        backlog_count,
         is_active,
         must_change_password,
         is_profile_completed,
@@ -233,6 +268,23 @@ router.get('/students', async (req, res, next) => {
 
     if (completion === 'completed') query = query.eq('is_profile_completed', true);
     if (completion === 'pending') query = query.eq('is_profile_completed', false);
+
+    if (backlogStatus === 'yes') query = query.eq('has_backlogs', true);
+    if (backlogStatus === 'no') query = query.eq('has_backlogs', false);
+    if (backlogStatus === 'none' || backlogStatus === 'pending') query = query.is('has_backlogs', null);
+
+    if (minBacklogs) {
+      const minB = parseInt(minBacklogs, 10);
+      if (!isNaN(minB)) query = query.gte('backlog_count', minB);
+    }
+    if (maxBacklogs) {
+      const maxB = parseInt(maxBacklogs, 10);
+      if (!isNaN(maxB)) query = query.lte('backlog_count', maxB);
+    }
+
+    if (location && location !== 'All' && location.trim().length > 0) {
+      query = query.ilike('location', `%${location.trim()}%`);
+    }
 
     const { data: students, error } = await query;
 
@@ -672,6 +724,341 @@ router.get('/analytics', async (req, res, next) => {
           submissionRate: overallSubmissionRate
         }
       }
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * GET /api/hod/students/:id
+ * Fetches complete profile and record summary for a specific student.
+ */
+router.get('/students/:id', async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    if (!isValidUUID(id)) {
+      return res.status(400).json({ success: false, error: 'Invalid student ID format.' });
+    }
+
+    const { data: student, error } = await supabaseAdmin
+      .from('aiml_student_profiles')
+      .select(`
+        *,
+        aiml_semester_records (
+          id,
+          semester_number,
+          cumulative_cgpa,
+          updated_at
+        ),
+        aiml_campaign_students (
+          id,
+          campaign_id,
+          status
+        )
+      `)
+      .eq('id', id)
+      .single();
+
+    if (error || !student) {
+      return res.status(404).json({ success: false, error: 'Student not found.' });
+    }
+
+    let signedUrl = null;
+    if (student.profile_photo_path) {
+      const { data: sData } = await supabaseAdmin.storage
+        .from('aiml-student-photos')
+        .createSignedUrl(student.profile_photo_path, 86400);
+      signedUrl = sData?.signedUrl || null;
+    }
+
+    return res.json({
+      success: true,
+      data: {
+        ...student,
+        profile_photo_url: signedUrl,
+        semesterRecordCount: student.aiml_semester_records?.length || 0,
+        campaignAssignmentCount: student.aiml_campaign_students?.length || 0
+      }
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * POST /api/hod/students/:id/reset-password
+ * Administrative password reset:
+ * 1. Verifies caller is HOD.
+ * 2. Fetches active student profile.
+ * 3. Generates secure temporary password using cryptographic randomness.
+ * 4. Updates password via official Supabase Admin Auth API.
+ * 5. Sets must_change_password = true in database.
+ * 6. Records audit event and delivers temporary password once.
+ */
+router.post('/students/:id/reset-password', async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    if (!isValidUUID(id)) {
+      return res.status(400).json({ success: false, error: 'Invalid student ID format.' });
+    }
+
+    const { data: student, error: fetchErr } = await supabaseAdmin
+      .from('aiml_student_profiles')
+      .select('id, user_id, register_number, full_name, is_active')
+      .eq('id', id)
+      .single();
+
+    if (fetchErr || !student) {
+      return res.status(404).json({ success: false, error: 'Student profile not found.' });
+    }
+
+    if (!student.is_active) {
+      return res.status(400).json({
+        success: false,
+        error: 'Cannot reset password for an inactive student account. Please reactivate the account first.'
+      });
+    }
+
+    const temporaryPassword = generateSecureTemporaryPassword();
+
+    // Update password in Supabase Auth via Admin API
+    const { error: authErr } = await supabaseAdmin.auth.admin.updateUserById(
+      student.user_id,
+      { password: temporaryPassword }
+    );
+
+    if (authErr) {
+      console.error('[HODService] Supabase Auth password reset failed for:', student.register_number, authErr.message);
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to update authentication credentials: ' + authErr.message
+      });
+    }
+
+    // Set must_change_password = true in PostgreSQL
+    const { error: dbErr } = await supabaseAdmin
+      .from('aiml_student_profiles')
+      .update({
+        must_change_password: true,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', student.id);
+
+    if (dbErr) {
+      console.error('[HODService] Failed to set must_change_password flag for:', student.register_number, dbErr.message);
+      return res.status(500).json({
+        success: false,
+        error: 'Password updated in auth service, but failed to synchronize database security flag.'
+      });
+    }
+
+    // Record audit log
+    await supabaseAdmin.from('aiml_audit_logs').insert({
+      user_id: req.user.id,
+      action: 'RESET_STUDENT_PASSWORD',
+      resource_type: 'aiml_student_profiles',
+      resource_id: student.id,
+      details: {
+        register_number: student.register_number,
+        student_id: student.id,
+        performed_by_hod_id: req.user.id
+      }
+    }).catch(() => {});
+
+    return res.json({
+      success: true,
+      message: `Password reset successfully for Register Number ${student.register_number}.`,
+      registerNumber: student.register_number,
+      studentName: student.full_name || 'Student',
+      temporaryPassword
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * PATCH /api/hod/students/:id/status
+ * Administrative account deactivation / reactivation:
+ * - Deactivate (isActive: false): blocks login, preserves all academic history & campaign data.
+ * - Reactivate (isActive: true): restores access.
+ */
+router.patch('/students/:id/status', async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    if (!isValidUUID(id)) {
+      return res.status(400).json({ success: false, error: 'Invalid student ID format.' });
+    }
+
+    const { isActive } = req.body;
+    if (typeof isActive !== 'boolean') {
+      return res.status(400).json({ success: false, error: 'isActive boolean flag is required in request body.' });
+    }
+
+    const { data: student, error: fetchErr } = await supabaseAdmin
+      .from('aiml_student_profiles')
+      .select('id, user_id, register_number, full_name, is_active')
+      .eq('id', id)
+      .single();
+
+    if (fetchErr || !student) {
+      return res.status(404).json({ success: false, error: 'Student profile not found.' });
+    }
+
+    const { data: updated, error: updateErr } = await supabaseAdmin
+      .from('aiml_student_profiles')
+      .update({
+        is_active: isActive,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', student.id)
+      .select('id, register_number, is_active, updated_at')
+      .single();
+
+    if (updateErr) {
+      console.error('[HODService] Failed to update account status for:', student.register_number, updateErr.message);
+      return res.status(500).json({ success: false, error: 'Failed to update student account status.' });
+    }
+
+    // Record audit event
+    await supabaseAdmin.from('aiml_audit_logs').insert({
+      user_id: req.user.id,
+      action: isActive ? 'REACTIVATE_STUDENT' : 'DEACTIVATE_STUDENT',
+      resource_type: 'aiml_student_profiles',
+      resource_id: student.id,
+      details: {
+        register_number: student.register_number,
+        previous_status: student.is_active,
+        new_status: isActive,
+        performed_by_hod_id: req.user.id
+      }
+    }).catch(() => {});
+
+    return res.json({
+      success: true,
+      message: `Student account for ${student.register_number} has been ${isActive ? 'reactivated' : 'deactivated'} successfully.`,
+      student: updated
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * DELETE /api/hod/students/:id
+ * Controlled permanent deletion:
+ * 1. Checks for existing academic semester records and campaign assignments.
+ *    If any exist, blocks deletion and advises deactivation to preserve institutional records.
+ * 2. Requires exact Register Number confirmation in request body.
+ * 3. Removes private profile photo from Supabase storage bucket.
+ * 4. Removes aiml_student_profiles and aiml_user_roles records.
+ * 5. Removes Supabase Auth user.
+ * 6. Records administrative audit log.
+ */
+router.delete('/students/:id', async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    if (!isValidUUID(id)) {
+      return res.status(400).json({ success: false, error: 'Invalid student ID format.' });
+    }
+
+    const { data: student, error: fetchErr } = await supabaseAdmin
+      .from('aiml_student_profiles')
+      .select(`
+        id,
+        user_id,
+        register_number,
+        full_name,
+        profile_photo_path,
+        aiml_semester_records (id),
+        aiml_campaign_students (id)
+      `)
+      .eq('id', id)
+      .single();
+
+    if (fetchErr || !student) {
+      return res.status(404).json({ success: false, error: 'Student profile not found.' });
+    }
+
+    const semCount = student.aiml_semester_records?.length || 0;
+    const campCount = student.aiml_campaign_students?.length || 0;
+
+    // Strict Institutional Data Retention Gate:
+    // Permanent deletion is strictly prohibited if historical records exist.
+    if (semCount > 0 || campCount > 0) {
+      return res.status(400).json({
+        success: false,
+        error: `Cannot permanently delete student ${student.register_number}: ${semCount} academic semester record(s) and ${campCount} campaign update assignment(s) exist. Institutional policy mandates academic history retention. Please use Deactivate Student instead.`,
+        canDeactivate: true,
+        semesterRecordCount: semCount,
+        campaignAssignmentCount: campCount
+      });
+    }
+
+    // Require explicit confirmation by typing exact register number
+    const { confirmationRegisterNumber } = req.body;
+    if (!confirmationRegisterNumber || confirmationRegisterNumber.trim().toUpperCase() !== student.register_number.toUpperCase()) {
+      return res.status(400).json({
+        success: false,
+        error: `Confirmation failed: You must provide confirmationRegisterNumber matching "${student.register_number}".`
+      });
+    }
+
+    // 1. Remove profile photo from private storage if present
+    if (student.profile_photo_path) {
+      await supabaseAdmin.storage
+        .from('aiml-student-photos')
+        .remove([student.profile_photo_path])
+        .catch((storageErr) => {
+          console.warn('[HODService] Non-fatal photo cleanup error during deletion:', storageErr?.message);
+        });
+    }
+
+    // 2. Delete database profile record
+    const { error: delProfileErr } = await supabaseAdmin
+      .from('aiml_student_profiles')
+      .delete()
+      .eq('id', student.id);
+
+    if (delProfileErr) {
+      console.error('[HODService] Failed to delete student profile row:', delProfileErr.message);
+      return res.status(500).json({ success: false, error: 'Failed to delete student database record.' });
+    }
+
+    // 3. Delete role mapping in aiml_user_roles
+    try {
+      await supabaseAdmin
+        .from('aiml_user_roles')
+        .delete()
+        .eq('user_id', student.user_id);
+    } catch (e) {
+      // Non-fatal if role deletion fails or mock has no catch
+    }
+
+    // 4. Delete Supabase Auth account
+    const { error: authDelErr } = await supabaseAdmin.auth.admin.deleteUser(student.user_id);
+    if (authDelErr) {
+      console.warn('[HODService] Non-fatal auth user deletion note:', authDelErr.message);
+    }
+
+    // 5. Record audit event
+    await supabaseAdmin.from('aiml_audit_logs').insert({
+      user_id: req.user.id,
+      action: 'PERMANENT_DELETE_STUDENT',
+      resource_type: 'aiml_student_profiles',
+      resource_id: student.id,
+      details: {
+        register_number: student.register_number,
+        deleted_student_id: student.id,
+        deleted_auth_user_id: student.user_id,
+        performed_by_hod_id: req.user.id
+      }
+    }).catch(() => {});
+
+    return res.json({
+      success: true,
+      message: `Student ${student.register_number} and all associated credentials have been permanently deleted.`
     });
   } catch (err) {
     next(err);

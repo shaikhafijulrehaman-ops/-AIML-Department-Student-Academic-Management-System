@@ -143,6 +143,13 @@ export const generateReportNaming = ({ type, request, activeRequest, appliedFilt
       metaParts.push(`Location: ${appliedFilters.location}`);
     }
 
+    if (appliedFilters?.backlogStatus && appliedFilters.backlogStatus !== 'All') {
+      metaParts.push(`Backlogs: ${appliedFilters.backlogStatus}`);
+    }
+    if (appliedFilters?.backlogMin) {
+      metaParts.push(`Min Backlogs: ${appliedFilters.backlogMin}`);
+    }
+
     // Comparison phrases
     const sscPhrase = formatComparisonPhrase('SSC', appliedFilters?.ssc?.op, appliedFilters?.ssc?.v1, appliedFilters?.ssc?.v2);
     if (sscPhrase) metaParts.push(sscPhrase);

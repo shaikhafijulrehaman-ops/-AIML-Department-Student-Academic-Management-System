@@ -426,3 +426,29 @@ export const fetchStudentRecords = async () => {
 export const fetchStudentCampaigns = async () => {
   return request('/api/student/campaigns', { method: 'GET' });
 };
+
+export const resetStudentPassword = async (studentId) => {
+  return request(`/api/hod/students/${studentId}/reset-password`, {
+    method: 'POST'
+  });
+};
+
+export const updateStudentStatus = async (studentId, isActive) => {
+  return request(`/api/hod/students/${studentId}/status`, {
+    method: 'PATCH',
+    body: JSON.stringify({ isActive })
+  });
+};
+
+export const deleteStudentAccount = async (studentId, confirmationRegisterNumber) => {
+  return request(`/api/hod/students/${studentId}`, {
+    method: 'DELETE',
+    body: JSON.stringify({ confirmationRegisterNumber })
+  });
+};
+
+export const fetchStudentById = async (studentId) => {
+  return request(`/api/hod/students/${studentId}`, {
+    method: 'GET'
+  });
+};

@@ -476,6 +476,8 @@ describe('Student Authentication & Profile Hardening Suite', () => {
           qualificationType: 'intermediate',
           sscPercentage: 92.0,
           intermediatePercentage: 90.0,
+          hasBacklogs: false,
+          backlogCount: 0,
           profilePhotoPath: validPhoto
         })
       });

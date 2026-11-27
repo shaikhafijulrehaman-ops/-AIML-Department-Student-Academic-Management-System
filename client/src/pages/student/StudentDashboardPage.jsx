@@ -78,6 +78,8 @@ export default function StudentDashboardPage() {
     year: activeStudent?.year || '',
     term: activeStudent?.term || '',
     profilePhoto: activeStudent?.profilePhoto || null,
+    hasBacklogs: activeStudent?.hasBacklogs ?? null,
+    backlogCount: activeStudent?.backlogCount !== null && activeStudent?.backlogCount !== undefined ? String(activeStudent.backlogCount) : '',
   });
 
   const [photoPreview, setPhotoPreview] = useState(activeStudent?.profilePhoto || null);
@@ -94,6 +96,8 @@ export default function StudentDashboardPage() {
       year: activeStudent?.year || '',
       term: activeStudent?.term || '',
       profilePhoto: activeStudent?.profilePhoto || '',
+      hasBacklogs: activeStudent?.hasBacklogs ?? null,
+      backlogCount: activeStudent?.backlogCount !== null && activeStudent?.backlogCount !== undefined ? String(activeStudent.backlogCount) : '',
     });
     setPhotoPreview(activeStudent?.profilePhoto || null);
     setIsProfileDirty(false);
@@ -172,22 +176,37 @@ export default function StudentDashboardPage() {
       setToastMessage({ text: 'Contact Phone Number is required.', type: 'error' });
       return;
     }
-    if (!profileForm.location?.trim()) {
-      setToastMessage({ text: 'Residential Location is required.', type: 'error' });
+    if (!profileForm.location?.trim() || profileForm.location.trim().toLowerCase() === 'other') {
+      setToastMessage({ text: 'A valid residential location is required.', type: 'error' });
       return;
+    }
+
+    if (profileForm.hasBacklogs === true) {
+      const c = parseInt(profileForm.backlogCount, 10);
+      if (isNaN(c) || c < 1 || String(profileForm.backlogCount).includes('.')) {
+        setToastMessage({ text: 'Number of backlogs must be a positive whole number (at least 1).', type: 'error' });
+        return;
+      }
     }
 
     if (activeStudent?.id) {
       setIsSavingProfile(true);
       try {
-        const res = await updateStudentProfile(activeStudent.id, {
+        const payload = {
           fullName: profileForm.name.trim(),
           name: profileForm.name.trim(),
           email: profileForm.email.trim(),
           phoneNumber: profileForm.phone.trim(),
           phone: profileForm.phone.trim(),
           location: profileForm.location.trim()
-        });
+        };
+
+        if (profileForm.hasBacklogs !== null && profileForm.hasBacklogs !== undefined) {
+          payload.hasBacklogs = Boolean(profileForm.hasBacklogs);
+          payload.backlogCount = profileForm.hasBacklogs ? parseInt(profileForm.backlogCount, 10) : 0;
+        }
+
+        const res = await updateStudentProfile(activeStudent.id, payload);
 
         if (res?.success) {
           setIsProfileDirty(false);
@@ -683,7 +702,7 @@ export default function StudentDashboardPage() {
             </div>
 
             {/* Academic Highlights Cards */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 text-xs">
               <div className="bg-white rounded-2xl p-4 border border-[#D4CAB4] shadow-sm">
                 <span className="text-slate-500 font-bold block">Current Term</span>
                 <div className="text-2xl font-extrabold text-slate-900 mt-1">
@@ -716,6 +735,20 @@ export default function StudentDashboardPage() {
                   {latestAcademics.latestCgpa !== null ? latestAcademics.latestCgpa.toFixed(2) : '—'}
                 </div>
                 <span className="text-[10px] text-slate-400">Cumulative score</span>
+              </div>
+
+              <div className="bg-white rounded-2xl p-4 border border-[#D4CAB4] shadow-sm">
+                <span className="text-slate-500 font-bold block">Backlogs</span>
+                <div className="text-base font-extrabold mt-1">
+                  {activeStudent.hasBacklogs === false ? (
+                    <span className="text-emerald-700 font-bold">No Backlogs</span>
+                  ) : activeStudent.hasBacklogs === true ? (
+                    <span className="text-rose-700 font-bold">{activeStudent.backlogCount || 1} Active</span>
+                  ) : (
+                    <span className="text-slate-500 font-medium">Not Provided</span>
+                  )}
+                </div>
+                <span className="text-[10px] text-slate-400">Academic Standing</span>
               </div>
             </div>
 
@@ -917,8 +950,64 @@ export default function StudentDashboardPage() {
                     required
                     value={profileForm.location}
                     onChange={(e) => handleProfileFieldChange('location', e.target.value)}
+                    placeholder="e.g. Bhimavaram, Vijayawada, Guntur..."
                     className="w-full p-2.5 rounded-xl border border-slate-300 outline-none focus:ring-1 focus:ring-[#5E8881]"
                   />
+                </div>
+
+                {/* Backlog Status */}
+                <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 sm:col-span-2 space-y-2.5">
+                  <label className="block font-bold text-slate-800 text-xs">
+                    Do you have any backlogs? <span className="text-red-500">*</span>
+                  </label>
+                  <div className="flex items-center gap-6">
+                    <label className="flex items-center gap-2 cursor-pointer font-bold text-xs text-slate-700">
+                      <input
+                        type="radio"
+                        name="prof-has-backlogs"
+                        checked={profileForm.hasBacklogs === true}
+                        onChange={() => {
+                          handleProfileFieldChange('hasBacklogs', true);
+                          if (!profileForm.backlogCount || profileForm.backlogCount === '0') {
+                            handleProfileFieldChange('backlogCount', '1');
+                          }
+                        }}
+                        className="w-4 h-4 text-[#5E8881] focus:ring-[#5E8881]"
+                      />
+                      <span>Yes</span>
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer font-bold text-xs text-slate-700">
+                      <input
+                        type="radio"
+                        name="prof-has-backlogs"
+                        checked={profileForm.hasBacklogs === false}
+                        onChange={() => {
+                          handleProfileFieldChange('hasBacklogs', false);
+                          handleProfileFieldChange('backlogCount', '0');
+                        }}
+                        className="w-4 h-4 text-[#5E8881] focus:ring-[#5E8881]"
+                      />
+                      <span>No</span>
+                    </label>
+                  </div>
+
+                  {profileForm.hasBacklogs === true && (
+                    <div className="pt-1 max-w-xs">
+                      <label htmlFor="prof-backlog-count" className="block font-bold text-slate-700 mb-1 text-xs">
+                        Number of Backlogs <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        id="prof-backlog-count"
+                        type="number"
+                        min="1"
+                        step="1"
+                        value={profileForm.backlogCount}
+                        onChange={(e) => handleProfileFieldChange('backlogCount', e.target.value)}
+                        placeholder="e.g. 1, 2, 3..."
+                        className="w-full p-2.5 rounded-xl border border-slate-300 bg-white font-bold text-slate-900 outline-none focus:ring-1 focus:ring-[#5E8881]"
+                      />
+                    </div>
+                  )}
                 </div>
 
                 {/* Academic Year (Institutional Standing - Locked after onboarding) */}
