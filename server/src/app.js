@@ -11,8 +11,7 @@ const app = express();
 // Security and utility middleware
 app.use(
   helmet({
-    crossOriginResourcePolicy: { policy: 'cross-origin' },
-    crossOriginOpenerPolicy: { policy: 'unsafe-none' }
+    crossOriginResourcePolicy: { policy: 'cross-origin' }
   })
 );
 app.use(morgan(ENV.NODE_ENV === 'production' ? 'combined' : 'dev'));

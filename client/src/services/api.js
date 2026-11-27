@@ -105,12 +105,21 @@ export const loginHOD = async ({ email, password }) => {
     const token = authData.session.access_token;
     setAuthToken(token);
 
-    // Verify HOD role in database if table exists
-    const { data: roleRecord } = await supabase
+    // Verify HOD role in database
+    const { data: roleRecord, error: roleError } = await supabase
       .from('aiml_user_roles')
-      .select('role')
+      .select('role, is_active')
       .eq('user_id', authData.user.id)
       .maybeSingle();
+
+    if (roleError || !roleRecord || roleRecord.role !== 'hod' || !roleRecord.is_active) {
+      await supabase.auth.signOut();
+      clearAuthToken();
+      return {
+        success: false,
+        error: 'Access denied: You do not possess active HOD administrative permissions.'
+      };
+    }
 
     return {
       success: true,
@@ -119,7 +128,7 @@ export const loginHOD = async ({ email, password }) => {
       user: {
         id: authData.user.id,
         email: authData.user.email,
-        role: roleRecord?.role || 'hod',
+        role: 'hod',
         name: authData.user.user_metadata?.name || 'Dr. Thatibalamuralikrishna'
       }
     };
@@ -163,12 +172,21 @@ export const loginStudent = async ({ registerNumber, password }) => {
     const token = authData.session.access_token;
     setAuthToken(token);
 
-    // Fetch student profile
-    const { data: profile } = await supabase
+    // Fetch and strictly verify student profile
+    const { data: profile, error: profileError } = await supabase
       .from('aiml_student_profiles')
       .select('*')
       .eq('user_id', authData.user.id)
       .maybeSingle();
+
+    if (profileError || !profile || !profile.is_active) {
+      await supabase.auth.signOut();
+      clearAuthToken();
+      return {
+        success: false,
+        error: 'Access denied: Your student account is inactive or not found.'
+      };
+    }
 
     return {
       success: true,
@@ -188,9 +206,11 @@ export const loginStudent = async ({ registerNumber, password }) => {
 };
 
 export const getCurrentUser = async () => {
-  if (API_BASE_URL) {
-    const res = await request('/api/auth/me', { method: 'GET' });
-    if (res.success) return res;
+  // Always query backend first for verified session and roles
+  const res = await request('/api/auth/me', { method: 'GET' });
+  if (res.success) return res;
+  if (!res.fallback && res.status !== 404 && res.status !== 405) {
+    return res;
   }
 
   try {
@@ -202,29 +222,40 @@ export const getCurrentUser = async () => {
     const user = session.user;
     const { data: roleRecord } = await supabase
       .from('aiml_user_roles')
-      .select('role')
+      .select('role, is_active')
       .eq('user_id', user.id)
       .maybeSingle();
 
-    let studentProfile = null;
-    if (roleRecord?.role !== 'hod') {
-      const { data: profile } = await supabase
-        .from('aiml_student_profiles')
-        .select('*')
-        .eq('user_id', user.id)
-        .maybeSingle();
-      studentProfile = profile;
+    if (roleRecord?.role === 'hod' && roleRecord?.is_active) {
+      return {
+        success: true,
+        user: {
+          id: user.id,
+          email: user.email,
+          role: 'hod'
+        }
+      };
     }
 
-    return {
-      success: true,
-      user: {
-        id: user.id,
-        email: user.email,
-        role: roleRecord?.role || (studentProfile ? 'student' : 'hod'),
-        studentProfile
-      }
-    };
+    const { data: profile } = await supabase
+      .from('aiml_student_profiles')
+      .select('*')
+      .eq('user_id', user.id)
+      .maybeSingle();
+
+    if (profile && profile.is_active) {
+      return {
+        success: true,
+        user: {
+          id: user.id,
+          email: user.email,
+          role: 'student',
+          studentProfile: profile
+        }
+      };
+    }
+
+    return { success: false, error: 'User does not possess an active role.' };
   } catch (err) {
     return { success: false, error: err.message };
   }
@@ -235,15 +266,15 @@ export const getCurrentUser = async () => {
 // ==========================================
 
 export const fetchHodStudents = async (filters = {}) => {
-  if (API_BASE_URL) {
-    const params = new URLSearchParams();
-    if (filters.year) params.append('year', filters.year);
-    if (filters.term) params.append('term', filters.term);
-    if (filters.status) params.append('status', filters.status);
-    if (filters.search) params.append('search', filters.search);
-    const query = params.toString() ? `?${params.toString()}` : '';
-    const res = await request(`/api/hod/students${query}`, { method: 'GET' });
-    if (res.success) return res;
+  const params = new URLSearchParams();
+  if (filters.year) params.append('year', filters.year);
+  if (filters.term) params.append('term', filters.term);
+  if (filters.status) params.append('status', filters.status);
+  if (filters.search) params.append('search', filters.search);
+  const query = params.toString() ? `?${params.toString()}` : '';
+  const res = await request(`/api/hod/students${query}`, { method: 'GET' });
+  if (res.success || (!res.fallback && res.status !== 404 && res.status !== 405)) {
+    return res;
   }
 
   try {
@@ -290,9 +321,9 @@ export const createCampaign = async (campaignData) => {
 };
 
 export const fetchCampaigns = async () => {
-  if (API_BASE_URL) {
-    const res = await request('/api/hod/campaigns', { method: 'GET' });
-    if (res.success) return res;
+  const res = await request('/api/hod/campaigns', { method: 'GET' });
+  if (res.success || (!res.fallback && res.status !== 404 && res.status !== 405)) {
+    return res;
   }
 
   try {
@@ -316,21 +347,11 @@ export const fetchAnalytics = async () => {
 // ==========================================
 
 export const changeInitialPassword = async (newPassword) => {
-  if (API_BASE_URL) {
-    const res = await request('/api/student/change-initial-password', {
-      method: 'POST',
-      body: JSON.stringify({ newPassword })
-    });
-    if (res.success) return res;
-  }
-
-  try {
-    const { error } = await supabase.auth.updateUser({ password: newPassword });
-    if (error) return { success: false, error: error.message };
-    return { success: true };
-  } catch (err) {
-    return { success: false, error: err.message };
-  }
+  // Always invoke backend password change endpoint to verify token and sync database flags
+  return request('/api/student/change-initial-password', {
+    method: 'POST',
+    body: JSON.stringify({ newPassword })
+  });
 };
 
 export const completeStudentProfile = async (studentProfileId, profileData) => {
