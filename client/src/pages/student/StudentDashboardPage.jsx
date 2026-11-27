@@ -246,8 +246,8 @@ export default function StudentDashboardPage() {
     return (
       <StudentChangePasswordView
         student={activeStudent}
-        onPasswordChanged={(newPassword) => {
-          const res = changeStudentPassword(activeStudent.id, newPassword);
+        onPasswordChanged={async (newPassword) => {
+          const res = await changeStudentPassword(activeStudent.id, newPassword);
           if (res?.success) {
             setToastMessage('Password updated successfully! Please now complete your student profile.');
             setTimeout(() => setToastMessage(null), 4000);
@@ -263,8 +263,8 @@ export default function StudentDashboardPage() {
     return (
       <StudentCompleteProfileView
         student={activeStudent}
-        onCompleteProfile={(profileData) => {
-          const res = completeStudentOnboarding(activeStudent.id, profileData);
+        onCompleteProfile={async (profileData) => {
+          const res = await completeStudentOnboarding(activeStudent.id, profileData);
           if (res?.success) {
             setToastMessage('Welcome! Your profile has been completed and saved successfully.');
             setTimeout(() => setToastMessage(null), 5000);
