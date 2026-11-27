@@ -179,29 +179,37 @@ export default function StudentDashboardPage() {
 
     if (activeStudent?.id) {
       setIsSavingProfile(true);
-      const res = await updateStudentProfile(activeStudent.id, {
-        fullName: profileForm.name.trim(),
-        name: profileForm.name.trim(),
-        email: profileForm.email.trim(),
-        phoneNumber: profileForm.phone.trim(),
-        phone: profileForm.phone.trim(),
-        location: profileForm.location.trim()
-      });
-      setIsSavingProfile(false);
-
-      if (res?.success) {
-        setIsProfileDirty(false);
-        setToastMessage({
-          text: 'Profile changes saved and verified in database!',
-          type: 'success'
+      try {
+        const res = await updateStudentProfile(activeStudent.id, {
+          fullName: profileForm.name.trim(),
+          name: profileForm.name.trim(),
+          email: profileForm.email.trim(),
+          phoneNumber: profileForm.phone.trim(),
+          phone: profileForm.phone.trim(),
+          location: profileForm.location.trim()
         });
-        setTimeout(() => setToastMessage(null), 3500);
-      } else {
+
+        if (res?.success) {
+          setIsProfileDirty(false);
+          setToastMessage({
+            text: 'Profile changes saved and verified in database!',
+            type: 'success'
+          });
+          setTimeout(() => setToastMessage(null), 3500);
+        } else {
+          setToastMessage({
+            text: res?.error || 'Failed to update student profile.',
+            type: 'error'
+          });
+          // Form values preserved so user can retry
+        }
+      } catch (err) {
         setToastMessage({
-          text: res?.error || 'Failed to update student profile.',
+          text: err?.message || 'Network error updating profile. Please retry.',
           type: 'error'
         });
-        // Preserves unsaved form values so student can retry
+      } finally {
+        setIsSavingProfile(false);
       }
     }
   };

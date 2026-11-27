@@ -13,8 +13,15 @@ export const ENV = {
   NODE_ENV: process.env.NODE_ENV || 'development',
   PORT: process.env.PORT || 5000,
   CLIENT_ORIGIN: process.env.CLIENT_ORIGIN || 'http://localhost:5173',
-  SUPABASE_URL: process.env.SUPABASE_URL || '',
-  SUPABASE_SECRET_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY || ''
+  SUPABASE_URL: process.env.SUPABASE_URL || 'https://kynkutbcdsmkkqdbpzdn.supabase.co',
+  SUPABASE_SECRET_KEY: 
+    process.env.SUPABASE_SERVICE_ROLE_KEY || 
+    process.env.SUPABASE_SECRET_KEY || 
+    process.env.SUPABASE_SERVICE_KEY || 
+    process.env.SUPABASE_ADMIN_KEY || 
+    process.env.SERVICE_ROLE_KEY || 
+    process.env.SUPABASE_KEY || 
+    ''
 };
 
 export default ENV;

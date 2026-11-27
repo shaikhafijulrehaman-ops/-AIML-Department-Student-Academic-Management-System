@@ -869,7 +869,7 @@ router.put('/profile', requireAuth, async (req, res, next) => {
 
     // Generate signed URL if photo exists
     let signedUrl = null;
-    if (updatedProfile.profile_photo_path) {
+    if (updatedProfile.profile_photo_path && supabaseAdmin.storage?.from) {
       const { data: sData } = await supabaseAdmin.storage
         .from('aiml-student-photos')
         .createSignedUrl(updatedProfile.profile_photo_path, 86400);

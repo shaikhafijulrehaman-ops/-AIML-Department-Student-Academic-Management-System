@@ -675,4 +675,77 @@ describe('Student Authentication & Profile Hardening Suite', () => {
       assert.equal(recData.code, 'PROFILE_COMPLETION_REQUIRED');
     });
   });
+
+  describe('6. Student Profile Portfolio Persistence & Ownership', () => {
+    test('Student successfully updates portfolio details through authenticated backend', async () => {
+      const res = await fetch(`${baseUrl}/api/student/profile`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: 'Bearer token-completed'
+        },
+        body: JSON.stringify({
+          fullName: 'Updated Completed Student',
+          phoneNumber: '9988776611',
+          location: 'Kanchikacherla'
+        })
+      });
+
+      assert.equal(res.status, 200);
+      const data = await res.json();
+      assert.equal(data.success, true);
+      assert.equal(data.data.full_name, 'Updated Completed Student');
+      assert.equal(data.data.phone_number, '9988776611');
+      assert.equal(data.data.location, 'Kanchikacherla');
+    });
+
+    test('Completed student cannot modify locked academic standing (current_year, current_term)', async () => {
+      const res = await fetch(`${baseUrl}/api/student/profile`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: 'Bearer token-completed'
+        },
+        body: JSON.stringify({
+          currentYear: 4,
+          currentTerm: 2
+        })
+      });
+
+      assert.equal(res.status, 200);
+      const data = await res.json();
+      assert.equal(data.success, true);
+      // Academic standing remains locked because is_profile_completed is true
+      assert.equal(data.data.current_year, 3);
+      assert.equal(data.data.current_term, 1);
+    });
+
+    test('Unauthenticated request to PUT /api/student/profile is strictly rejected with 401', async () => {
+      const res = await fetch(`${baseUrl}/api/student/profile`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ fullName: 'Malicious Actor' })
+      });
+
+      assert.equal(res.status, 401);
+    });
+
+    test('Photo upload rejects empty or invalid binary data', async () => {
+      const res = await fetch(`${baseUrl}/api/student/photo`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: 'Bearer token-completed'
+        },
+        body: JSON.stringify({ photoData: 'data:image/jpeg;base64,invalid' })
+      });
+
+      assert.equal(res.status, 400);
+      const data = await res.json();
+      assert.equal(data.success, false);
+      assert.match(data.error, /Invalid file content|No image/);
+    });
+  });
 });
