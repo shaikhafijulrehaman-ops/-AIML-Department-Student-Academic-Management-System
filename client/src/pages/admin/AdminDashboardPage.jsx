@@ -42,6 +42,7 @@ import BRANDING from '../../config/branding';
 import CollegeLogo from '../../components/CollegeLogo';
 import StudentProfileModal from '../../components/StudentProfileModal';
 import CreateStudentModal from '../../components/CreateStudentModal';
+import ErrorBoundary from '../../components/ErrorBoundary';
 import { useAuth } from '../../context/AuthContext';
 import { getStudentLatestAcademics, ALL_SEMESTER_TERMS, getTermsForYear, YEAR_ALLOWED_TERMS } from '../../data/mockData';
 import { ACADEMIC_YEAR_TO_BATCH, getBatchLabel } from '../../utils/academicYearMapping';
@@ -2577,27 +2578,29 @@ export default function AdminDashboardPage() {
       </main>
 
       {/* Student Complete Profile Modal (HOD View) */}
-      <StudentProfileModal
-        student={selectedStudentForModal}
-        isOpen={Boolean(selectedStudentForModal)}
-        onClose={() => setViewingStudentId(null)}
-        latestAcademics={selectedStudentForModal ? getStudentLatestAcademics(selectedStudentForModal) : null}
-        onResetPassword={(std) => {
-          setViewingStudentId(null);
-          setResetModalStudent(std);
-          setTempPasswordResult(null);
-          setCopiedPass(false);
-        }}
-        onToggleStatus={(std) => {
-          setViewingStudentId(null);
-          setStatusModalStudent(std);
-        }}
-        onDeleteStudent={(std) => {
-          setViewingStudentId(null);
-          setDeleteModalStudent(std);
-          setDeleteConfirmRegNo('');
-        }}
-      />
+      <ErrorBoundary compact onReset={() => setViewingStudentId(null)}>
+        <StudentProfileModal
+          student={selectedStudentForModal}
+          isOpen={Boolean(selectedStudentForModal)}
+          onClose={() => setViewingStudentId(null)}
+          latestAcademics={selectedStudentForModal ? getStudentLatestAcademics(selectedStudentForModal) : null}
+          onResetPassword={(std) => {
+            setViewingStudentId(null);
+            setResetModalStudent(std);
+            setTempPasswordResult(null);
+            setCopiedPass(false);
+          }}
+          onToggleStatus={(std) => {
+            setViewingStudentId(null);
+            setStatusModalStudent(std);
+          }}
+          onDeleteStudent={(std) => {
+            setViewingStudentId(null);
+            setDeleteModalStudent(std);
+            setDeleteConfirmRegNo('');
+          }}
+        />
+      </ErrorBoundary>
 
       {/* 1. RESET PASSWORD MODAL */}
       {resetModalStudent && (

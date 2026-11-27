@@ -18,7 +18,8 @@ import {
   Key,
   UserX,
   Trash2,
-  ShieldCheck
+  ShieldCheck,
+  Info
 } from 'lucide-react';
 import { ALL_SEMESTER_TERMS, getMaxCompletedSemForTerm } from '../data/mockData';
 import { getBatchLabel, getMaxCompletedSemesters } from '../utils/academicYearMapping';

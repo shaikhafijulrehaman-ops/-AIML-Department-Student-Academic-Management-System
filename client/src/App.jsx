@@ -14,6 +14,11 @@ import AdminDashboardPage from './pages/admin/AdminDashboardPage';
 import StudentLoginPage from './pages/student/StudentLoginPage';
 import StudentDashboardPage from './pages/student/StudentDashboardPage';
 
+// Development-only Design Preview (excluded in production)
+const DevDesignPreviewPage = import.meta.env.DEV
+  ? React.lazy(() => import('./pages/DesignPreviewPage'))
+  : null;
+
 function PortalRouter() {
   const { isAdminAuthenticated, isStudentAuthenticated } = useAuth();
   const activePortal = PORTAL_CONFIG.currentPortalType;
@@ -50,6 +55,18 @@ function PortalRouter() {
       <Route path="/hod/login" element={<Navigate to="/admin/login" replace />} />
       <Route path="/hod/dashboard" element={<Navigate to="/admin/dashboard" replace />} />
       <Route path="/hod/*" element={<Navigate to="/admin/dashboard" replace />} />
+
+      {/* Development-only preview route: completely restricted and excluded in production */}
+      {import.meta.env.DEV && DevDesignPreviewPage && (
+        <Route
+          path="/design-preview"
+          element={
+            <React.Suspense fallback={<div className="p-8 text-center text-xs text-slate-500">Loading Preview...</div>}>
+              <DevDesignPreviewPage />
+            </React.Suspense>
+          }
+        />
+      )}
 
       {/* ========================================== */}
       {/* DEPLOYMENT / ALIAS BASE ROUTES             */}

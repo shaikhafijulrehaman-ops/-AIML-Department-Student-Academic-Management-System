@@ -426,61 +426,61 @@ export default function DesignPreviewPage() {
           </p>
         </div>
 
-        {/* Stat Cards Grid */}
+        {/* Stat Cards Grid (Design Token Showcase Only) */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
           <StatCard
-            title="Department Students"
-            value="486"
-            subtitle="AIML B.Tech Cohorts"
+            title="Design Token Metric"
+            value="Tactile 3D"
+            subtitle="Department Sage Fog Surface"
             icon={Users}
-            trend={{ direction: 'up', value: '+12%' }}
+            badge="Component Demo"
           />
           <StatCard
-            title="Active Faculty"
-            value="24"
-            subtitle="Ph.D &amp; M.Tech Specialists"
+            title="Elevation Depth"
+            value="Soft Clay"
+            subtitle="Dual Layer Shadow Hierarchy"
             icon={GraduationCap}
-            trend={{ direction: 'neutral', value: '0%' }}
+            badge="Brand Token"
           />
           <StatCard
-            title="Average CGPA"
-            value="8.42"
-            subtitle="Semester Cumulative"
+            title="Validated CGPA Token"
+            value="Scale 10.0"
+            subtitle="Official Cumulative Metric"
             icon={Award}
-            trend={{ direction: 'up', value: '+0.34' }}
+            badge="Strict CGPA"
           />
           <StatCard
-            title="Academic Courses"
-            value="38"
-            subtitle="Theory &amp; AI Laboratories"
+            title="Accessible Controls"
+            value="Min 44px"
+            subtitle="Touch Target Benchmark"
             icon={BookOpen}
-            badge="Autonomous"
+            badge="WCAG 2.1"
           />
         </div>
 
-        {/* Progress Cards Grid */}
+        {/* Progress Cards Grid (Component Showcase Only) */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           <ProgressCard
-            title="Mid-Term Marks Uploads"
-            current={32}
-            total={38}
-            unit="courses"
-            statusLabel="In Progress"
-            caption="84% of department sections successfully uploaded to portal"
+            title="Component Tokens"
+            current={10}
+            total={10}
+            unit="tokens"
+            statusLabel="Validated"
+            caption="Department color palette tokens verified across all components"
           />
           <ProgressCard
-            title="Attendance Benchmark"
-            current={88}
-            percentage={88}
+            title="Responsive Layout"
+            current={100}
+            percentage={100}
             statusLabel="Compliant"
-            caption="Department aggregate attendance exceeding 75% regulatory mandate"
+            caption="Mobile, tablet, and desktop viewports fully responsive"
           />
           <ProgressCard
-            title="Syllabus Completion"
-            current={92}
-            percentage={92}
+            title="Accessibility Check"
+            current={100}
+            percentage={100}
             statusLabel="Target Met"
-            caption="Lab experiments and mid-semester coverage finalized"
+            caption="High contrast ratios and keyboard navigation validated"
           />
         </div>
       </section>

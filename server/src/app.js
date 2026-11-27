@@ -46,6 +46,14 @@ app.use(
 app.use(express.json({ limit: '25mb' }));
 app.use(express.urlencoded({ extended: true, limit: '25mb' }));
 
+// Middleware to normalize duplicate /api/api prefix if encountered
+app.use((req, res, next) => {
+  if (req.url.startsWith('/api/api/')) {
+    req.url = req.url.replace('/api/api/', '/api/');
+  }
+  next();
+});
+
 // Root route
 app.get('/', (req, res) => {
   res.json({
@@ -53,6 +61,11 @@ app.get('/', (req, res) => {
     institution: 'DVR & Dr. HS MIC College of Technology',
     healthCheck: '/api/health'
   });
+});
+
+// Direct health check alias at /health
+app.get('/health', (req, res) => {
+  res.redirect(307, '/api/health');
 });
 
 // Mount API routes

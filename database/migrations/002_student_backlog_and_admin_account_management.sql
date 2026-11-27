@@ -58,7 +58,7 @@ BEGIN
   END IF;
 
   -- 1. Full Name
-  IF v_profile.full_name IS NULL OR pg_catalog.length(pg_catalog.trim(v_profile.full_name)) = 0 THEN
+  IF v_profile.full_name IS NULL OR pg_catalog.length(pg_catalog.btrim(v_profile.full_name)) = 0 THEN
     RAISE EXCEPTION 'Cannot mark profile completed: Full Name is required.';
   END IF;
 
@@ -68,12 +68,12 @@ BEGIN
   END IF;
 
   -- 3. Phone Number
-  IF v_profile.phone_number IS NULL OR pg_catalog.length(pg_catalog.trim(v_profile.phone_number)) = 0 THEN
+  IF v_profile.phone_number IS NULL OR pg_catalog.length(pg_catalog.btrim(v_profile.phone_number)) = 0 THEN
     RAISE EXCEPTION 'Cannot mark profile completed: Contact Phone Number is required.';
   END IF;
 
   -- 4. Location
-  IF v_profile.location IS NULL OR pg_catalog.length(pg_catalog.trim(v_profile.location)) = 0 THEN
+  IF v_profile.location IS NULL OR pg_catalog.length(pg_catalog.btrim(v_profile.location)) = 0 THEN
     RAISE EXCEPTION 'Cannot mark profile completed: Residential Location is required.';
   END IF;
 

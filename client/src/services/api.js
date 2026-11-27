@@ -9,10 +9,36 @@ import { supabase } from './supabaseClient';
 const DEFAULT_RENDER_BACKEND_URL = 'https://aiml-department-student-academic.onrender.com';
 
 const RAW_API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
+
+// Ensure API_BASE_URL never has a trailing slash or trailing /api
+const sanitizeBaseUrl = (raw) => {
+  if (!raw) return '';
+  let url = String(raw).trim().replace(/\/+$/, '');
+  if (url.endsWith('/api')) {
+    url = url.slice(0, -4);
+  }
+  return url;
+};
+
 // Use explicit env var if set, otherwise use official Render backend in production or relative /api proxy in development
 export const API_BASE_URL = RAW_API_BASE_URL !== undefined 
-  ? (RAW_API_BASE_URL === '/api' ? '' : RAW_API_BASE_URL)
+  ? (RAW_API_BASE_URL === '/api' ? '' : sanitizeBaseUrl(RAW_API_BASE_URL))
   : (import.meta.env.PROD ? DEFAULT_RENDER_BACKEND_URL : '');
+
+/**
+ * Builds a clean, fully-qualified API URL guaranteeing /api is prefixed exactly once.
+ */
+export const buildApiUrl = (endpoint) => {
+  const cleanEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+  const normalizedEndpoint = cleanEndpoint.startsWith('/api/') || cleanEndpoint === '/api'
+    ? cleanEndpoint
+    : `/api${cleanEndpoint}`;
+
+  if (!API_BASE_URL) {
+    return normalizedEndpoint;
+  }
+  return `${API_BASE_URL}${normalizedEndpoint}`;
+};
 
 const TOKEN_KEY = 'aiml_auth_token';
 const REFRESH_TOKEN_KEY = 'aiml_refresh_token';
@@ -68,7 +94,7 @@ export const refreshAuthSession = async () => {
       }
 
       // Try backend endpoint first
-      const res = await fetch(API_BASE_URL ? `${API_BASE_URL}/api/auth/refresh` : '/api/auth/refresh', {
+      const res = await fetch(buildApiUrl('/auth/refresh'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
         body: JSON.stringify({ refreshToken })
@@ -109,7 +135,7 @@ const request = async (endpoint, options = {}) => {
     ...(options.headers || {})
   };
 
-  const url = API_BASE_URL ? `${API_BASE_URL}${endpoint}` : endpoint;
+  const url = buildApiUrl(endpoint);
   try {
     const res = await fetch(url, {
       ...options,
@@ -459,7 +485,7 @@ export const updateStudentProfile = async (profileData) => {
 };
 
 export const uploadStudentPhoto = async (fileOrFormData) => {
-  const url = API_BASE_URL ? `${API_BASE_URL}/api/student/photo` : '/api/student/photo';
+  const url = buildApiUrl('/student/photo');
 
   const makeAttempt = async (authToken) => {
     let body;
