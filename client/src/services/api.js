@@ -369,6 +369,49 @@ export const updateStudentProfile = async (profileData) => {
   });
 };
 
+export const uploadStudentPhoto = async (fileOrFormData) => {
+  const token = getAuthToken();
+  const url = API_BASE_URL ? `${API_BASE_URL}/api/student/photo` : '/api/student/photo';
+
+  let body;
+  let headers = {
+    'Accept': 'application/json',
+    ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+  };
+
+  if (fileOrFormData instanceof FormData) {
+    body = fileOrFormData;
+  } else if (typeof fileOrFormData === 'object' && fileOrFormData !== null && (fileOrFormData instanceof File || fileOrFormData instanceof Blob)) {
+    const formData = new FormData();
+    formData.append('photo', fileOrFormData);
+    body = formData;
+  } else if (typeof fileOrFormData === 'string') {
+    headers['Content-Type'] = 'application/json';
+    body = JSON.stringify({ photoData: fileOrFormData });
+  } else {
+    return { success: false, error: 'Invalid photo payload provided.' };
+  }
+
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers,
+      body
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      return {
+        success: false,
+        status: res.status,
+        error: data.error || data.message || `Photo upload failed with status ${res.status}`
+      };
+    }
+    return { success: true, ...data };
+  } catch (err) {
+    return { success: false, error: err.message || 'Network error uploading profile photo.' };
+  }
+};
+
 export const submitSemesterRecord = async ({ semesterNumber, cumulativeCgpa }) => {
   return request('/api/student/records', {
     method: 'POST',

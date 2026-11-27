@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import * as api from '../services/api';
 import { getMaxCompletedSemForTerm, getTermsForYear } from '../data/mockData';
+import { getBatchLabel, getAcademicYearDisplay } from '../utils/academicYearMapping';
 
 const AuthContext = createContext(null);
 
@@ -49,6 +50,8 @@ export const AuthProvider = ({ children }) => {
 
         const profile = res.profile || res.user?.studentProfile;
         if (role === 'student' && profile) {
+          const cy = profile.current_year || profile.currentYear;
+          const ct = profile.current_term || profile.currentTerm;
           setActiveStudent({
             id: profile.id,
             registerNumber: profile.register_number || profile.registerNumber,
@@ -56,14 +59,16 @@ export const AuthProvider = ({ children }) => {
             email: profile.email,
             phone: profile.phone_number || profile.phoneNumber,
             location: profile.location,
-            year: profile.current_year ? `Year ${profile.current_year}` : (profile.currentYear ? `Year ${profile.currentYear}` : 'Not Provided'),
-            term: profile.current_term ? `Term ${profile.current_term}` : (profile.currentTerm ? `Term ${profile.currentTerm}` : 'Not Provided'),
-            currentYear: profile.current_year || profile.currentYear,
-            currentTerm: profile.current_term || profile.currentTerm,
+            currentYear: cy,
+            currentTerm: ct,
+            year: cy ? getAcademicYearDisplay(cy) : 'Not Provided',
+            batch: cy ? getBatchLabel(cy) : 'Academic Batch Pending',
+            term: (cy && ct) ? `${cy}-${ct}` : 'Not Provided',
             sscPercentage: profile.ssc_percentage || profile.sscPercentage,
             interType: profile.qualification_type || profile.qualificationType,
             interPercentage: profile.intermediate_percentage || profile.intermediatePercentage,
-            profilePhoto: profile.profile_photo_url || profile.profilePhotoPath,
+            profilePhoto: profile.profile_photo_url || profile.profilePhotoUrl || profile.profile_photo_path || profile.profilePhotoPath,
+            profilePhotoPath: profile.profile_photo_path || profile.profilePhotoPath,
             mustChangePassword: Boolean(profile.must_change_password ?? profile.mustChangePassword ?? true),
             onboardingStatus: (profile.is_profile_completed || profile.isProfileCompleted) ? 'Profile Completed' : 'Profile Pending',
             studentStatus: (profile.is_active || profile.isActive) ? 'Active' : 'Inactive',
@@ -101,14 +106,16 @@ export const AuthProvider = ({ children }) => {
         email: s.email,
         phone: s.phone_number,
         location: s.location,
-        year: s.current_year ? `Year ${s.current_year}` : 'Not Provided',
-        term: s.current_term ? `Term ${s.current_term}` : 'Not Provided',
+        year: s.current_year ? getAcademicYearDisplay(s.current_year) : 'Not Provided',
+        batch: s.current_year ? getBatchLabel(s.current_year) : 'Academic Batch Pending',
+        term: (s.current_year && s.current_term) ? `${s.current_year}-${s.current_term}` : 'Not Provided',
         currentYear: s.current_year,
         currentTerm: s.current_term,
         sscPercentage: s.ssc_percentage,
         interType: s.qualification_type,
         interPercentage: s.intermediate_percentage,
-        profilePhoto: s.profile_photo_path || s.profile_photo_url,
+        profilePhoto: s.profile_photo_url || s.profile_photo_path,
+        profilePhotoPath: s.profile_photo_path,
         mustChangePassword: Boolean(s.must_change_password),
         onboardingStatus: s.is_profile_completed ? 'Profile Completed' : 'Profile Pending',
         studentStatus: s.is_active ? 'Active' : 'Inactive',
@@ -183,6 +190,8 @@ export const AuthProvider = ({ children }) => {
 
       const profile = res.profile || res.user?.studentProfile;
       if (profile) {
+        const cy = profile.current_year || profile.currentYear;
+        const ct = profile.current_term || profile.currentTerm;
         const studentObj = {
           id: profile.id,
           registerNumber: profile.register_number || profile.registerNumber,
@@ -190,18 +199,20 @@ export const AuthProvider = ({ children }) => {
           email: profile.email,
           phone: profile.phone_number || profile.phoneNumber,
           location: profile.location,
-          year: profile.current_year ? `Year ${profile.current_year}` : (profile.currentYear ? `Year ${profile.currentYear}` : 'Not Provided'),
-          term: profile.current_term ? `Term ${profile.current_term}` : (profile.currentTerm ? `Term ${profile.currentTerm}` : 'Not Provided'),
-          currentYear: profile.current_year || profile.currentYear,
-          currentTerm: profile.current_term || profile.currentTerm,
+          currentYear: cy,
+          currentTerm: ct,
+          year: cy ? getAcademicYearDisplay(cy) : 'Not Provided',
+          batch: cy ? getBatchLabel(cy) : 'Academic Batch Pending',
+          term: (cy && ct) ? `${cy}-${ct}` : 'Not Provided',
           sscPercentage: profile.ssc_percentage || profile.sscPercentage,
           interType: profile.qualification_type || profile.qualificationType,
           interPercentage: profile.intermediate_percentage || profile.intermediatePercentage,
-          profilePhoto: profile.profile_photo_url || profile.profilePhotoPath,
+          profilePhoto: profile.profile_photo_url || profile.profilePhotoUrl || profile.profile_photo_path || profile.profilePhotoPath,
+          profilePhotoPath: profile.profile_photo_path || profile.profilePhotoPath,
           mustChangePassword: Boolean(profile.must_change_password ?? profile.mustChangePassword ?? true),
           onboardingStatus: (profile.is_profile_completed || profile.isProfileCompleted) ? 'Profile Completed' : 'Profile Pending',
           studentStatus: (profile.is_active || profile.isActive) ? 'Active' : 'Inactive',
-          semesterRecords: (profile.semester_records || []).map((r) => ({
+          semesterRecords: (profile.semester_records || profile.aiml_semester_records || []).map((r) => ({
             term: `Semester ${r.semester_number}`,
             semesterNumber: r.semester_number,
             cgpa: r.cumulative_cgpa,
@@ -272,23 +283,41 @@ export const AuthProvider = ({ children }) => {
   const updateStudentProfile = async (studentId, profileData) => {
     const res = await api.updateStudentProfile(profileData);
     if (res.success) {
+      const serverData = res.data || {};
       setActiveStudent((prev) => {
         if (!prev) return prev;
         return {
           ...prev,
-          ...profileData,
-          name: profileData.name || profileData.fullName || prev.name,
-          email: profileData.email ?? prev.email,
-          phone: profileData.phone ?? profileData.phoneNumber ?? prev.phone,
-          location: profileData.location ?? prev.location,
-          year: profileData.year ? (String(profileData.year).includes('Year') ? profileData.year : `Year ${profileData.year}`) : prev.year,
-          term: profileData.term ? (String(profileData.term).includes('Term') ? profileData.term : `Term ${profileData.term}`) : prev.term,
-          profilePhoto: profileData.profilePhoto ?? prev.profilePhoto
+          name: serverData.full_name || profileData.name || profileData.fullName || prev.name,
+          email: serverData.email ?? profileData.email ?? prev.email,
+          phone: serverData.phone_number ?? profileData.phone ?? profileData.phoneNumber ?? prev.phone,
+          location: serverData.location ?? profileData.location ?? prev.location,
+          sscPercentage: serverData.ssc_percentage ?? profileData.sscPercentage ?? prev.sscPercentage,
+          interType: serverData.qualification_type ?? profileData.qualificationType ?? profileData.interType ?? prev.interType,
+          interPercentage: serverData.intermediate_percentage ?? profileData.intermediatePercentage ?? profileData.interPercentage ?? prev.interPercentage,
+          profilePhoto: serverData.profile_photo_url || res.signedUrl || prev.profilePhoto
         };
       });
-      return { success: true };
+      return { success: true, data: res.data };
     }
-    return { success: false, error: res.error || 'Failed to update profile' };
+    return { success: false, error: res.error || 'Failed to update student profile.' };
+  };
+
+  // Student uploads profile photo to Supabase Storage
+  const uploadStudentPhoto = async (fileOrFormData) => {
+    const res = await api.uploadStudentPhoto(fileOrFormData);
+    if (res.success) {
+      setActiveStudent((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          profilePhoto: res.signedUrl || prev.profilePhoto,
+          profilePhotoPath: res.profilePhotoPath || prev.profilePhotoPath
+        };
+      });
+      return { success: true, signedUrl: res.signedUrl, profilePhotoPath: res.profilePhotoPath };
+    }
+    return { success: false, error: res.error || 'Failed to upload photo.' };
   };
 
   // Student updates academic details (SSC, Inter, CGPAs)
@@ -389,6 +418,7 @@ export const AuthProvider = ({ children }) => {
         changeStudentPassword,
         completeStudentOnboarding,
         updateStudentProfile,
+        uploadStudentPhoto,
         updateStudentAcademicDetails,
         submitSemesterCgpa,
         createYearSpecificUpdateRequest,

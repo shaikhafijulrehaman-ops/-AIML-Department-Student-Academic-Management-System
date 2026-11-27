@@ -12,11 +12,13 @@ import {
   Camera, 
   ArrowRight,
   ShieldCheck,
-  Building2
+  Building2,
+  Loader2
 } from 'lucide-react';
 import CollegeLogo from './CollegeLogo';
 import BRANDING from '../config/branding';
 import { ALL_SEMESTER_TERMS, getTermsForYear, getMaxCompletedSemForTerm } from '../data/mockData';
+import { uploadStudentPhoto } from '../services/api';
 
 export default function StudentCompleteProfileView({ student, onCompleteProfile, onLogout }) {
   const [fullName, setFullName] = useState(
@@ -29,8 +31,9 @@ export default function StudentCompleteProfileView({ student, onCompleteProfile,
   );
   const [year, setYear] = useState('3rd Year');
   const [term, setTerm] = useState('3-1');
-  const [profilePhoto, setProfilePhoto] = useState(student.profilePhoto || null);
+  const [uploadedPhotoPath, setUploadedPhotoPath] = useState(student.profilePhotoPath || null);
   const [photoPreview, setPhotoPreview] = useState(student.profilePhoto || null);
+  const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
 
   // Previous Education
   const [sscPercentage, setSscPercentage] = useState('');
@@ -72,46 +75,92 @@ export default function StudentCompleteProfileView({ student, onCompleteProfile,
     }
   };
 
-  const handlePhotoUpload = (e) => {
+  const handlePhotoUpload = async (e) => {
     const file = e.target.files?.[0];
-    if (file) {
-      if (file.size > 20 * 1024 * 1024) {
-        setError('Image file size must be less than 20MB.');
+    if (!file) return;
+
+    setError('');
+    // Validate MIME types - accept JPEG, PNG, or convert WebP
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+      setError('Invalid file format. Only JPEG and PNG images are supported.');
+      return;
+    }
+
+    setIsUploadingPhoto(true);
+
+    try {
+      // Create local preview immediately
+      const objectUrl = URL.createObjectURL(file);
+      setPhotoPreview(objectUrl);
+
+      // Compress/normalize image to ensure <= 1MB JPEG/PNG
+      const processImage = () => new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          const img = new Image();
+          img.onload = () => {
+            const maxDim = 1000;
+            let width = img.width;
+            let height = img.height;
+            if (width > maxDim || height > maxDim) {
+              if (width > height) {
+                height = Math.round((height * maxDim) / width);
+                width = maxDim;
+              } else {
+                width = Math.round((width * maxDim) / height);
+                height = maxDim;
+              }
+            }
+            const canvas = document.createElement('canvas');
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0, width, height);
+
+            // Determine output mime: preserve PNG if original was PNG, else JPEG
+            const outMime = file.type === 'image/png' ? 'image/png' : 'image/jpeg';
+            canvas.toBlob((blob) => {
+              if (!blob) {
+                reject(new Error('Canvas compression failed'));
+                return;
+              }
+              const processedFile = new File([blob], file.name.replace(/\.[^/.]+$/, outMime === 'image/png' ? '.png' : '.jpg'), {
+                type: outMime
+              });
+              resolve(processedFile);
+            }, outMime, 0.88);
+          };
+          img.onerror = () => reject(new Error('Failed to load image'));
+          img.src = event.target.result;
+        };
+        reader.onerror = () => reject(new Error('Failed to read file'));
+        reader.readAsDataURL(file);
+      });
+
+      const fileToUpload = (file.size > 1048576 || file.type === 'image/webp')
+        ? await processImage()
+        : file;
+
+      if (fileToUpload.size > 1048576) {
+        setError('Processed file size exceeds 1 MB limit. Please choose a smaller photo.');
+        setIsUploadingPhoto(false);
         return;
       }
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        const img = new Image();
-        img.onload = () => {
-          // Client-side image resizing and compression for fast, reliable upload
-          const maxDim = 800;
-          let width = img.width;
-          let height = img.height;
-          if (width > maxDim || height > maxDim) {
-            if (width > height) {
-              height = Math.round((height * maxDim) / width);
-              width = maxDim;
-            } else {
-              width = Math.round((width * maxDim) / height);
-              height = maxDim;
-            }
-          }
-          const canvas = document.createElement('canvas');
-          canvas.width = width;
-          canvas.height = height;
-          const ctx = canvas.getContext('2d');
-          ctx.drawImage(img, 0, 0, width, height);
-          const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.82);
-          setPhotoPreview(compressedDataUrl);
-          setProfilePhoto(compressedDataUrl);
-        };
-        img.onerror = () => {
-          setPhotoPreview(event.target.result);
-          setProfilePhoto(event.target.result);
-        };
-        img.src = event.target.result;
-      };
-      reader.readAsDataURL(file);
+
+      const res = await uploadStudentPhoto(fileToUpload);
+      if (res?.success && (res.photoPath || res.signedUrl)) {
+        setUploadedPhotoPath(res.photoPath);
+        if (res.signedUrl) {
+          setPhotoPreview(res.signedUrl);
+        }
+      } else {
+        setError(res?.error || 'Failed to upload photo to secure storage.');
+      }
+    } catch (err) {
+      console.error('Photo upload error:', err);
+      setError(err?.message || 'Failed to upload profile photo.');
+    } finally {
+      setIsUploadingPhoto(false);
     }
   };
 
@@ -210,7 +259,8 @@ export default function StudentCompleteProfileView({ student, onCompleteProfile,
       year: parsedYear,
       currentTerm: parsedTerm,
       term: parsedTerm,
-      profilePhoto,
+      profilePhoto: photoPreview,
+      profilePhotoPath: uploadedPhotoPath,
       sscPercentage: sscNum,
       qualificationType: interType.toLowerCase().trim(),
       interType: interType.toLowerCase().trim(),
@@ -310,32 +360,41 @@ export default function StudentCompleteProfileView({ student, onCompleteProfile,
               {/* Photo Upload & Preview */}
               <div className="flex flex-col items-center gap-2 shrink-0">
                 <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-2xl overflow-hidden bg-slate-100 border-2 border-[#5E8881] shadow-sm flex items-center justify-center text-slate-400 font-bold text-lg relative group">
-                  {photoPreview ? (
+                  {isUploadingPhoto ? (
+                    <div className="flex flex-col items-center justify-center p-2 text-center text-slate-600">
+                      <Loader2 className="w-6 h-6 animate-spin text-[#5E8881] mb-1" />
+                      <span className="text-[10px] font-bold">Uploading...</span>
+                    </div>
+                  ) : photoPreview ? (
                     <img src={photoPreview} alt="Preview" className="w-full h-full object-cover" />
                   ) : (
                     <User className="w-10 h-10 text-slate-300" />
                   )}
-                  <label 
-                    htmlFor="onboarding-photo"
-                    className="absolute inset-0 bg-black/40 text-white flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer text-[10px] font-bold"
-                  >
-                    <Camera className="w-5 h-5 mb-1" />
-                    <span>Upload</span>
-                  </label>
+                  {!isUploadingPhoto && (
+                    <label 
+                      htmlFor="onboarding-photo"
+                      className="absolute inset-0 bg-black/40 text-white flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer text-[10px] font-bold"
+                    >
+                      <Camera className="w-5 h-5 mb-1" />
+                      <span>{photoPreview ? 'Change' : 'Upload'}</span>
+                    </label>
+                  )}
                 </div>
                 <input
                   id="onboarding-photo"
                   type="file"
-                  accept="image/*"
+                  accept="image/jpeg,image/png,image/webp"
                   onChange={handlePhotoUpload}
+                  disabled={isUploadingPhoto}
                   className="hidden"
                 />
                 <label 
                   htmlFor="onboarding-photo"
-                  className="text-[11px] font-bold text-[#5E8881] hover:underline cursor-pointer"
+                  className={`text-[11px] font-bold ${isUploadingPhoto ? 'text-slate-400 cursor-not-allowed' : 'text-[#5E8881] hover:underline cursor-pointer'}`}
                 >
-                  Upload Photo
+                  {isUploadingPhoto ? 'Uploading Photo...' : photoPreview ? 'Change Photo' : 'Upload Photo'}
                 </label>
+                <span className="text-[9px] text-slate-400 font-medium">JPG or PNG (Max 1MB)</span>
               </div>
 
               {/* Personal Fields Grid */}
@@ -595,11 +654,25 @@ export default function StudentCompleteProfileView({ student, onCompleteProfile,
           <div className="pt-2">
             <button
               type="submit"
-              disabled={isSubmitting}
-              className="w-full py-4 px-6 rounded-2xl bg-[#5E8881] hover:bg-[#48706A] active:scale-[0.99] text-white font-extrabold text-sm shadow-lg transition-all cursor-pointer flex items-center justify-center gap-2"
+              disabled={isSubmitting || isUploadingPhoto}
+              className={`w-full py-4 px-6 rounded-2xl font-extrabold text-sm shadow-lg transition-all flex items-center justify-center gap-2 ${
+                isSubmitting || isUploadingPhoto
+                  ? 'bg-slate-400 cursor-not-allowed text-white'
+                  : 'bg-[#5E8881] hover:bg-[#48706A] active:scale-[0.99] text-white cursor-pointer'
+              }`}
             >
-              <CheckCircle2 className="w-5 h-5 text-white" />
-              <span>{isSubmitting ? 'Saving Your Profile...' : 'Save Profile & Enter Student Portal'}</span>
+              {isSubmitting || isUploadingPhoto ? (
+                <Loader2 className="w-5 h-5 animate-spin text-white" />
+              ) : (
+                <CheckCircle2 className="w-5 h-5 text-white" />
+              )}
+              <span>
+                {isUploadingPhoto
+                  ? 'Uploading Photo...'
+                  : isSubmitting
+                  ? 'Saving Your Profile...'
+                  : 'Save Profile & Enter Student Portal'}
+              </span>
             </button>
             <p className="text-center text-[11px] text-slate-500 mt-2">
               Note: Information is saved only when you click this button. You can update your details later from your dashboard.

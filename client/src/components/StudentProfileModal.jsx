@@ -17,6 +17,7 @@ import {
   FileText
 } from 'lucide-react';
 import { ALL_SEMESTER_TERMS, getMaxCompletedSemForTerm } from '../data/mockData';
+import { getBatchLabel, getMaxCompletedSemesters } from '../utils/academicYearMapping';
 
 /**
  * StudentProfileModal
@@ -47,15 +48,20 @@ export default function StudentProfileModal({ student, isOpen, onClose, latestAc
   if (!isOpen || !student) return null;
 
   const isPending = student.onboardingStatus === 'Profile Pending';
-  const maxCompletedSem = student.term && student.term !== 'Not Provided' 
-    ? getMaxCompletedSemForTerm(student.term) 
+  const currentYearNum = student.currentYear || parseInt(String(student.year || '').replace(/\D/g, ''), 10);
+  const currentTermNum = student.currentTerm || (student.term && String(student.term).includes('-') ? parseInt(String(student.term).split('-')[1], 10) : parseInt(String(student.term || '').replace(/\D/g, ''), 10)) || 1;
+
+  const maxCompletedSem = (currentYearNum && currentYearNum >= 2)
+    ? getMaxCompletedSemesters(currentYearNum, currentTermNum)
     : 0;
 
   // Determine semester records status
   const semesterTableData = ALL_SEMESTER_TERMS.map((item) => {
     const isEligible = !isPending && maxCompletedSem > 0 && item.semNumber <= maxCompletedSem;
-    const rec = (student.semesterRecords || []).find((r) => r.term === item.term);
-    const hasCgpa = rec && rec.cgpa !== null && rec.cgpa !== undefined;
+    const rec = (student.semesterRecords || []).find(
+      (r) => r.semesterNumber === item.semNumber || r.term === item.term || r.term === `Semester ${item.semNumber}`
+    );
+    const hasCgpa = rec && rec.cgpa !== null && rec.cgpa !== undefined && rec.cgpa !== '';
 
     let updateStatus = 'Not Applicable';
     let statusBadgeClass = 'bg-slate-100 text-slate-500 border-slate-200';
@@ -66,18 +72,18 @@ export default function StudentProfileModal({ student, isOpen, onClose, latestAc
       statusBadgeClass = 'bg-amber-50 text-amber-800 border-amber-200';
       displayCgpa = 'Not Provided';
     } else if (isEligible) {
-      if (hasCgpa && (rec.status === 'Updated' || rec.cgpa > 0)) {
+      if (hasCgpa && Number(rec.cgpa) > 0) {
         updateStatus = 'Updated';
         statusBadgeClass = 'bg-emerald-50 text-emerald-800 border-emerald-300 font-bold';
         displayCgpa = Number(rec.cgpa).toFixed(2);
       } else {
-        updateStatus = 'Not Updated';
+        updateStatus = 'Pending Submission';
         statusBadgeClass = 'bg-amber-50 text-amber-800 border-amber-300 font-bold';
-        displayCgpa = 'Not Provided';
+        displayCgpa = 'Pending';
       }
     } else {
-      updateStatus = 'Not Applicable';
-      statusBadgeClass = 'bg-slate-100 text-slate-500 border-slate-200';
+      updateStatus = 'Upcoming / Ongoing';
+      statusBadgeClass = 'bg-slate-100 text-slate-400 border-slate-200';
       displayCgpa = '—';
     }
 
@@ -95,6 +101,28 @@ export default function StudentProfileModal({ student, isOpen, onClose, latestAc
 
   const updatedSemCount = semesterTableData.filter((s) => s.updateStatus === 'Updated').length;
   const eligibleSemCount = semesterTableData.filter((s) => s.isEligible).length;
+
+  let complianceStatusText = 'No Academic Records';
+  let complianceBadgeClass = 'bg-slate-100 text-slate-700 border-slate-300';
+  let complianceIconClass = 'bg-slate-200 text-slate-700';
+
+  if (isPending || eligibleSemCount === 0) {
+    complianceStatusText = 'No Academic Records';
+    complianceBadgeClass = 'bg-slate-100 text-slate-600 border-slate-300';
+    complianceIconClass = 'bg-slate-100 text-slate-600';
+  } else if (updatedSemCount === 0) {
+    complianceStatusText = 'Pending Submissions';
+    complianceBadgeClass = 'bg-amber-100 text-amber-800 border-amber-300';
+    complianceIconClass = 'bg-amber-100 text-amber-800';
+  } else if (updatedSemCount < eligibleSemCount) {
+    complianceStatusText = 'Partially Submitted';
+    complianceBadgeClass = 'bg-blue-100 text-blue-800 border-blue-300';
+    complianceIconClass = 'bg-blue-100 text-blue-800';
+  } else {
+    complianceStatusText = 'All Required Records Submitted';
+    complianceBadgeClass = 'bg-emerald-100 text-emerald-800 border-emerald-300';
+    complianceIconClass = 'bg-emerald-100 text-emerald-800';
+  }
 
   return (
     <div 
@@ -183,10 +211,13 @@ export default function StudentProfileModal({ student, isOpen, onClose, latestAc
               <div className="text-center sm:text-left flex-1 min-w-0 space-y-2">
                 <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2">
                   <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-[#4A192B]/10 text-[#4A192B]">
-                    {student.year && student.year !== 'Not Provided' ? student.year : 'Year: Not Provided'}
+                    {student.year && student.year !== 'Not Provided' ? student.year : 'Year: Pending'}
+                  </span>
+                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-[#FF6B1A]/10 text-[#FF6B1A]">
+                    {student.batch || getBatchLabel(currentYearNum)}
                   </span>
                   <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-700 font-mono">
-                    {student.term && student.term !== 'Not Provided' ? `Term ${student.term}` : 'Term: Not Provided'}
+                    {student.term && student.term !== 'Not Provided' ? `Term ${student.term}` : 'Term: Pending'}
                   </span>
                   <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold flex items-center gap-1 ${
                     isPending ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'
@@ -433,8 +464,16 @@ export default function StudentProfileModal({ student, isOpen, onClose, latestAc
           {/* SECTION 5: ACADEMIC UPDATE STATUS SUMMARY */}
           <section className="bg-slate-50 rounded-2xl p-4 border border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
             <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-xl bg-emerald-100 text-emerald-800 flex items-center justify-center shrink-0">
-                <CheckCircle2 className="w-4 h-4" />
+              <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${complianceIconClass}`}>
+                {eligibleSemCount > 0 && updatedSemCount === eligibleSemCount ? (
+                  <CheckCircle2 className="w-4 h-4" />
+                ) : eligibleSemCount > 0 && updatedSemCount > 0 ? (
+                  <AlertCircle className="w-4 h-4" />
+                ) : eligibleSemCount > 0 ? (
+                  <Clock className="w-4 h-4" />
+                ) : (
+                  <Info className="w-4 h-4" />
+                )}
               </div>
               <div>
                 <span className="font-bold text-slate-800 block">
@@ -447,12 +486,8 @@ export default function StudentProfileModal({ student, isOpen, onClose, latestAc
             </div>
 
             <div className="flex items-center gap-2">
-              <span className={`px-3 py-1 rounded-full text-xs font-bold border ${
-                updatedSemCount === eligibleSemCount 
-                  ? 'bg-emerald-100 text-emerald-800 border-emerald-300' 
-                  : 'bg-amber-100 text-amber-800 border-amber-300'
-              }`}>
-                {updatedSemCount === eligibleSemCount ? 'All Records Completed' : 'Pending Semester Updates'}
+              <span className={`px-3.5 py-1.5 rounded-full text-xs font-bold border shadow-xs ${complianceBadgeClass}`}>
+                {complianceStatusText}
               </span>
             </div>
           </section>

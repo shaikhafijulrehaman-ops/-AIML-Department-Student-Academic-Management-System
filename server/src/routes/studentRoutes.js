@@ -1,7 +1,14 @@
 import { Router } from 'express';
+import crypto from 'crypto';
+import multer from 'multer';
 import { supabaseAdmin, isSupabaseAdminReady } from '../config/supabaseAdmin.js';
 
 const router = Router();
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 1048576 } // 1MB max
+});
 
 // Standard UUID format validator (v1-v5)
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -537,8 +544,135 @@ router.post('/complete-profile', requireAuth, async (req, res, next) => {
 });
 
 /**
+ * POST /api/student/photo
+ * Secure photo upload endpoint for student profiles.
+ * Stores authenticated image in private Supabase bucket 'aiml-student-photos'.
+ * Validates actual image signatures (JPEG/PNG) and enforces 1 MB maximum.
+ */
+router.post('/photo', requireAuth, upload.single('photo'), async (req, res, next) => {
+  let uploadedStoragePath = null;
+  try {
+    const authUserId = req.user.id;
+
+    // Fetch student profile to verify ownership and active status
+    const { data: profile, error: profileErr } = await supabaseAdmin
+      .from('aiml_student_profiles')
+      .select('id, user_id, profile_photo_path, is_active')
+      .eq('user_id', authUserId)
+      .single();
+
+    if (profileErr || !profile) {
+      return res.status(404).json({ success: false, error: 'Student profile not found.' });
+    }
+
+    if (!profile.is_active) {
+      return res.status(403).json({ success: false, error: 'Forbidden: Inactive student account.' });
+    }
+
+    // Extract file buffer from multer or fallback JSON base64
+    let buffer = req.file?.buffer;
+    if (!buffer && req.body.photoData) {
+      const base64Clean = req.body.photoData.replace(/^data:image\/\w+;base64,/, '');
+      buffer = Buffer.from(base64Clean, 'base64');
+    }
+
+    if (!buffer || buffer.length === 0) {
+      return res.status(400).json({ success: false, error: 'No image file provided.' });
+    }
+
+    // Enforce 1 MB maximum size limit
+    if (buffer.length > 1048576) {
+      return res.status(400).json({
+        success: false,
+        error: 'File size exceeds 1 MB maximum limit for student profile photos.'
+      });
+    }
+
+    // Validate actual binary image signatures (magic bytes)
+    const isJpeg = buffer.length >= 3 && buffer[0] === 0xFF && buffer[1] === 0xD8 && buffer[2] === 0xFF;
+    const isPng = buffer.length >= 8 &&
+      buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4E && buffer[3] === 0x47 &&
+      buffer[4] === 0x0D && buffer[5] === 0x0A && buffer[6] === 0x1A && buffer[7] === 0x0A;
+
+    if (!isJpeg && !isPng) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid file content. Only authentic JPEG and PNG images are permitted.'
+      });
+    }
+
+    const ext = isPng ? 'png' : 'jpg';
+    const mimeType = isPng ? 'image/png' : 'image/jpeg';
+    const uniqueFileName = `photo-${Date.now()}-${crypto.randomBytes(4).toString('hex')}.${ext}`;
+    const storagePath = `${authUserId}/${uniqueFileName}`;
+    uploadedStoragePath = storagePath;
+
+    // Upload to private Supabase storage bucket: aiml-student-photos
+    const { error: uploadError } = await supabaseAdmin.storage
+      .from('aiml-student-photos')
+      .upload(storagePath, buffer, {
+        contentType: mimeType,
+        upsert: true
+      });
+
+    if (uploadError) {
+      console.error('[StudentPhoto] Storage upload failed:', uploadError.message);
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to upload photo to secure storage: ' + uploadError.message
+      });
+    }
+
+    // Save uploaded storage path in database
+    const oldPath = profile.profile_photo_path;
+    const { data: updatedProfile, error: dbError } = await supabaseAdmin
+      .from('aiml_student_profiles')
+      .update({
+        profile_photo_path: storagePath,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', profile.id)
+      .select('*')
+      .single();
+
+    if (dbError) {
+      console.error('[StudentPhoto] DB update failed. Executing compensating storage cleanup:', dbError.message);
+      // Compensating rollback: delete newly uploaded file
+      await supabaseAdmin.storage.from('aiml-student-photos').remove([storagePath]).catch(() => {});
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to persist photo path to student profile: ' + dbError.message
+      });
+    }
+
+    // Success: safely delete old photo if one existed and is distinct
+    if (oldPath && oldPath !== storagePath && oldPath.startsWith(`${authUserId}/`)) {
+      await supabaseAdmin.storage.from('aiml-student-photos').remove([oldPath]).catch(() => {});
+    }
+
+    // Generate authenticated signed URL for immediate preview (24 hours expiry)
+    const { data: signedData } = await supabaseAdmin.storage
+      .from('aiml-student-photos')
+      .createSignedUrl(storagePath, 86400);
+
+    return res.json({
+      success: true,
+      message: 'Profile photo uploaded and saved successfully.',
+      profilePhotoPath: storagePath,
+      signedUrl: signedData?.signedUrl || null,
+      data: updatedProfile
+    });
+  } catch (err) {
+    if (uploadedStoragePath) {
+      await supabaseAdmin.storage.from('aiml-student-photos').remove([uploadedStoragePath]).catch(() => {});
+    }
+    next(err);
+  }
+});
+
+/**
  * GET /api/student/profile
- * Returns the authenticated student's profile information.
+ * Returns the authenticated student's profile information with signed photo URL.
  */
 router.get('/profile', requireAuth, async (req, res, next) => {
   try {
@@ -562,9 +696,20 @@ router.get('/profile', requireAuth, async (req, res, next) => {
       });
     }
 
+    let signedUrl = null;
+    if (profile.profile_photo_path) {
+      const { data: sData } = await supabaseAdmin.storage
+        .from('aiml-student-photos')
+        .createSignedUrl(profile.profile_photo_path, 86400);
+      signedUrl = sData?.signedUrl || null;
+    }
+
     return res.json({
       success: true,
-      data: profile
+      data: {
+        ...profile,
+        profile_photo_url: signedUrl
+      }
     });
   } catch (err) {
     next(err);
@@ -574,6 +719,7 @@ router.get('/profile', requireAuth, async (req, res, next) => {
 /**
  * PUT /api/student/profile
  * Updates the authenticated student's profile information and/or academic records.
+ * Complies with DB security trigger aiml_protect_student_profile_fields.
  */
 router.put('/profile', requireAuth, async (req, res, next) => {
   try {
@@ -624,25 +770,29 @@ router.put('/profile', requireAuth, async (req, res, next) => {
       if (locVal) updatePayload.location = locVal;
     }
 
-    if (req.body.currentYear !== undefined || req.body.current_year !== undefined || req.body.year !== undefined) {
-      const rawY = req.body.currentYear ?? req.body.current_year ?? req.body.year;
-      const yNum = typeof rawY === 'number' ? rawY : parseInt(String(rawY || '').replace(/\D/g, ''), 10);
-      if (!isNaN(yNum) && yNum >= 1 && yNum <= 4) {
-        updatePayload.current_year = yNum;
+    // Academic standing: Only allowed during onboarding if profile is not completed yet!
+    // If profile is already completed, the trigger locks current_year/current_term.
+    if (!profile.is_profile_completed) {
+      if (req.body.currentYear !== undefined || req.body.current_year !== undefined || req.body.year !== undefined) {
+        const rawY = req.body.currentYear ?? req.body.current_year ?? req.body.year;
+        const yNum = typeof rawY === 'number' ? rawY : parseInt(String(rawY || '').replace(/\D/g, ''), 10);
+        if (!isNaN(yNum) && yNum >= 1 && yNum <= 4) {
+          updatePayload.current_year = yNum;
+        }
       }
-    }
 
-    if (req.body.currentTerm !== undefined || req.body.current_term !== undefined || req.body.term !== undefined) {
-      const rawT = req.body.currentTerm ?? req.body.current_term ?? req.body.term;
-      let tNum;
-      if (typeof rawT === 'number') {
-        tNum = rawT;
-      } else {
-        const s = String(rawT || '').trim();
-        tNum = s.includes('-') ? parseInt(s.split('-')[1], 10) : parseInt(s.replace(/\D/g, ''), 10);
-      }
-      if (!isNaN(tNum) && tNum >= 1 && tNum <= 2) {
-        updatePayload.current_term = tNum;
+      if (req.body.currentTerm !== undefined || req.body.current_term !== undefined || req.body.term !== undefined) {
+        const rawT = req.body.currentTerm ?? req.body.current_term ?? req.body.term;
+        let tNum;
+        if (typeof rawT === 'number') {
+          tNum = rawT;
+        } else {
+          const s = String(rawT || '').trim();
+          tNum = s.includes('-') ? parseInt(s.split('-')[1], 10) : parseInt(s.replace(/\D/g, ''), 10);
+        }
+        if (!isNaN(tNum) && tNum >= 1 && tNum <= 2) {
+          updatePayload.current_term = tNum;
+        }
       }
     }
 
@@ -665,9 +815,12 @@ router.put('/profile', requireAuth, async (req, res, next) => {
       }
     }
 
-    if (req.body.profilePhoto !== undefined || req.body.profile_photo_path !== undefined) {
-      const photoVal = req.body.profilePhoto ?? req.body.profile_photo_path;
-      if (photoVal) updatePayload.profile_photo_path = photoVal;
+    // Only allow setting profile_photo_path if it's a valid storage path belonging to this user
+    if (req.body.profilePhotoPath !== undefined || req.body.profile_photo_path !== undefined) {
+      const pathVal = req.body.profilePhotoPath ?? req.body.profile_photo_path;
+      if (typeof pathVal === 'string' && (pathVal.startsWith(`${authUserId}/`) || pathVal === '')) {
+        updatePayload.profile_photo_path = pathVal;
+      }
     }
 
     // Update aiml_student_profiles
@@ -680,9 +833,9 @@ router.put('/profile', requireAuth, async (req, res, next) => {
 
     if (updateError) {
       console.error('[StudentService] Failed to update profile:', updateError.message);
-      return res.status(500).json({
+      return res.status(400).json({
         success: false,
-        error: 'Failed to update student profile.'
+        error: updateError.message || 'Failed to update student profile.'
       });
     }
 
@@ -714,10 +867,22 @@ router.put('/profile', requireAuth, async (req, res, next) => {
       }
     }
 
+    // Generate signed URL if photo exists
+    let signedUrl = null;
+    if (updatedProfile.profile_photo_path) {
+      const { data: sData } = await supabaseAdmin.storage
+        .from('aiml-student-photos')
+        .createSignedUrl(updatedProfile.profile_photo_path, 86400);
+      signedUrl = sData?.signedUrl || null;
+    }
+
     return res.json({
       success: true,
       message: 'Student profile updated successfully.',
-      data: updatedProfile
+      data: {
+        ...updatedProfile,
+        profile_photo_url: signedUrl
+      }
     });
   } catch (err) {
     next(err);

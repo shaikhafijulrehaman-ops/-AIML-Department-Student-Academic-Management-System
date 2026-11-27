@@ -23,12 +23,14 @@ import {
   Upload,
   RotateCcw,
   Sparkles,
-  Info
+  Info,
+  Loader2
 } from 'lucide-react';
 import BRANDING from '../../config/branding';
 import CollegeLogo from '../../components/CollegeLogo';
 import { useAuth } from '../../context/AuthContext';
 import { getMaxCompletedSemForTerm, getStudentLatestAcademics, ALL_SEMESTER_TERMS, getTermsForYear, YEAR_ALLOWED_TERMS } from '../../data/mockData';
+import { getBatchLabel, getAcademicYearDisplay } from '../../utils/academicYearMapping';
 import { useTheme } from '../../context/ThemeContext';
 import { THEMES } from '../../config/theme';
 import StudentChangePasswordView from '../../components/StudentChangePasswordView';
@@ -45,6 +47,7 @@ export default function StudentDashboardPage() {
     activeStudent,
     logout,
     updateStudentProfile,
+    uploadStudentPhoto,
     updateStudentAcademicDetails,
     updateRequests,
     isStudentSubmittedForRequest,
@@ -56,7 +59,11 @@ export default function StudentDashboardPage() {
   // 1. My Dashboard | 2. My Portfolio | 3. Academic Details | 4. Update Requests
   const [activeTab, setActiveTab] = useState('dashboard'); // 'dashboard' | 'profile' | 'academics' | 'requests'
 
+  // Structured toast feedback: { text: string, type: 'success' | 'error' } | null
   const [toastMessage, setToastMessage] = useState(null);
+  const [isPhotoUploading, setIsPhotoUploading] = useState(false);
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
+  const [isSavingAcademic, setIsSavingAcademic] = useState(false);
 
   // ==========================================
   // SECTION 2: STUDENT PROFILE FORM STATE
@@ -97,57 +104,104 @@ export default function StudentDashboardPage() {
     setIsProfileDirty(true);
   };
 
-  const handlePhotoSelect = (e) => {
+  const handlePhotoSelect = async (e) => {
     const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        const img = new Image();
-        img.onload = () => {
-          const maxDim = 800;
-          let width = img.width;
-          let height = img.height;
-          if (width > maxDim || height > maxDim) {
-            if (width > height) {
-              height = Math.round((height * maxDim) / width);
-              width = maxDim;
-            } else {
-              width = Math.round((width * maxDim) / height);
-              height = maxDim;
-            }
-          }
-          const canvas = document.createElement('canvas');
-          canvas.width = width;
-          canvas.height = height;
-          const ctx = canvas.getContext('2d');
-          ctx.drawImage(img, 0, 0, width, height);
-          const compressed = canvas.toDataURL('image/jpeg', 0.82);
-          setPhotoPreview(compressed);
-          setProfileForm((prev) => ({ ...prev, profilePhoto: compressed }));
-          setIsProfileDirty(true);
-        };
-        img.onerror = () => {
-          setPhotoPreview(event.target.result);
-          setProfileForm((prev) => ({ ...prev, profilePhoto: event.target.result }));
-          setIsProfileDirty(true);
-        };
-        img.src = event.target.result;
-      };
-      reader.readAsDataURL(file);
+    if (!file) return;
+
+    // Validate mime type: JPEG and PNG strictly required
+    if (!['image/jpeg', 'image/png'].includes(file.type)) {
+      setToastMessage({
+        text: 'Invalid file format. Only JPEG and PNG images are supported by storage.',
+        type: 'error'
+      });
+      return;
+    }
+
+    // Validate size: 1 MB maximum
+    if (file.size > 1048576) {
+      setToastMessage({
+        text: 'File size exceeds 1 MB limit. Please select an image under 1 MB.',
+        type: 'error'
+      });
+      return;
+    }
+
+    // Immediate local preview
+    const localUrl = URL.createObjectURL(file);
+    setPhotoPreview(localUrl);
+    setIsPhotoUploading(true);
+
+    try {
+      const res = await uploadStudentPhoto(file);
+      if (res?.success && res.signedUrl) {
+        setPhotoPreview(res.signedUrl);
+        setToastMessage({
+          text: 'Profile photo uploaded and saved successfully to secure storage!',
+          type: 'success'
+        });
+        setTimeout(() => setToastMessage(null), 4000);
+      } else {
+        setPhotoPreview(activeStudent?.profilePhoto || null);
+        setToastMessage({
+          text: res?.error || 'Failed to upload photo to secure storage.',
+          type: 'error'
+        });
+      }
+    } catch (err) {
+      setPhotoPreview(activeStudent?.profilePhoto || null);
+      setToastMessage({
+        text: err?.message || 'Error occurred during photo upload.',
+        type: 'error'
+      });
+    } finally {
+      setIsPhotoUploading(false);
     }
   };
 
   const handleSaveProfile = async (e) => {
     e.preventDefault();
+    if (!profileForm.name?.trim()) {
+      setToastMessage({ text: 'Full Name is required.', type: 'error' });
+      return;
+    }
+    if (!profileForm.email?.trim() || !profileForm.email.includes('@')) {
+      setToastMessage({ text: 'A valid email address is required.', type: 'error' });
+      return;
+    }
+    if (!profileForm.phone?.trim()) {
+      setToastMessage({ text: 'Contact Phone Number is required.', type: 'error' });
+      return;
+    }
+    if (!profileForm.location?.trim()) {
+      setToastMessage({ text: 'Residential Location is required.', type: 'error' });
+      return;
+    }
+
     if (activeStudent?.id) {
-      const res = await updateStudentProfile(activeStudent.id, profileForm);
+      setIsSavingProfile(true);
+      const res = await updateStudentProfile(activeStudent.id, {
+        fullName: profileForm.name.trim(),
+        name: profileForm.name.trim(),
+        email: profileForm.email.trim(),
+        phoneNumber: profileForm.phone.trim(),
+        phone: profileForm.phone.trim(),
+        location: profileForm.location.trim()
+      });
+      setIsSavingProfile(false);
+
       if (res?.success) {
         setIsProfileDirty(false);
-        setToastMessage('Profile changes saved successfully!');
+        setToastMessage({
+          text: 'Profile changes saved and verified in database!',
+          type: 'success'
+        });
         setTimeout(() => setToastMessage(null), 3500);
       } else {
-        setToastMessage(res?.error || 'Failed to save profile changes.');
-        setTimeout(() => setToastMessage(null), 4000);
+        setToastMessage({
+          text: res?.error || 'Failed to update student profile.',
+          type: 'error'
+        });
+        // Preserves unsaved form values so student can retry
       }
     }
   };
@@ -216,14 +270,22 @@ export default function StudentDashboardPage() {
   const handleSaveAcademicDetails = async (e) => {
     e.preventDefault();
     if (activeStudent?.id) {
+      setIsSavingAcademic(true);
       const res = await updateStudentAcademicDetails(activeStudent.id, academicForm);
+      setIsSavingAcademic(false);
+
       if (res?.success) {
         setIsAcademicDirty(false);
-        setToastMessage('Academic details saved and updated successfully!');
+        setToastMessage({
+          text: 'Academic details saved and verified in database!',
+          type: 'success'
+        });
         setTimeout(() => setToastMessage(null), 3500);
       } else {
-        setToastMessage(res?.error || 'Failed to save academic details.');
-        setTimeout(() => setToastMessage(null), 4000);
+        setToastMessage({
+          text: res?.error || 'Failed to save academic details.',
+          type: 'error'
+        });
       }
     }
   };
@@ -536,14 +598,29 @@ export default function StudentDashboardPage() {
 
       {/* Main Content Body */}
       <main className="max-w-6xl mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-6 w-full flex-1 space-y-4 sm:space-y-6 min-w-0 overflow-x-hidden">
-        {/* Toast Feedback */}
+        {/* Toast Feedback with Strict Error / Success Alert Styling */}
         {toastMessage && (
-          <div className="p-3.5 rounded-2xl bg-emerald-50 border border-emerald-300 text-emerald-800 text-xs font-medium flex items-center justify-between shadow-sm animate-in fade-in">
+          <div className={`p-3.5 rounded-2xl border text-xs font-semibold flex items-center justify-between shadow-sm animate-in fade-in ${
+            (typeof toastMessage === 'object' && toastMessage.type === 'error')
+              ? 'bg-rose-50 border-rose-300 text-rose-800'
+              : 'bg-emerald-50 border-emerald-300 text-emerald-800'
+          }`}>
             <div className="flex items-center gap-2">
-              <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0" />
-              <span>{toastMessage}</span>
+              {(typeof toastMessage === 'object' && toastMessage.type === 'error') ? (
+                <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+              ) : (
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+              )}
+              <span>{typeof toastMessage === 'object' ? toastMessage.text : toastMessage}</span>
             </div>
-            <button onClick={() => setToastMessage(null)} className="text-emerald-700 hover:text-emerald-900 cursor-pointer">
+            <button
+              onClick={() => setToastMessage(null)}
+              className={
+                (typeof toastMessage === 'object' && toastMessage.type === 'error')
+                  ? 'text-rose-700 hover:text-rose-900 cursor-pointer'
+                  : 'text-emerald-700 hover:text-emerald-900 cursor-pointer'
+              }
+            >
               <X className="w-4 h-4" />
             </button>
           </div>
@@ -561,7 +638,7 @@ export default function StudentDashboardPage() {
                   {activeStudent.profilePhoto ? (
                     <img src={activeStudent.profilePhoto} alt={activeStudent.name} className="w-full h-full object-cover" />
                   ) : (
-                    <span>{activeStudent.name.substring(0, 2).toUpperCase()}</span>
+                    <span>{activeStudent.name ? activeStudent.name.substring(0, 2).toUpperCase() : 'ST'}</span>
                   )}
                 </div>
                 <div>
@@ -573,8 +650,8 @@ export default function StudentDashboardPage() {
                       {activeStudent.registerNumber}
                     </span>
                   </div>
-                  <p className="text-xs text-slate-600 mt-0.5">
-                    {activeStudent.year} &bull; Semester Term {activeStudent.term} &bull; {BRANDING.departmentAbbr}
+                  <p className="text-xs text-slate-600 mt-0.5 font-medium">
+                    {activeStudent.batch || getBatchLabel(activeStudent.currentYear)} &bull; Term {activeStudent.currentTerm || 1} &bull; {BRANDING.departmentAbbr}
                   </p>
                 </div>
               </div>
@@ -710,33 +787,50 @@ export default function StudentDashboardPage() {
               {/* Profile Photo Picker & Preview */}
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-2">
-                  Profile Photo (Upload &amp; Preview)
+                  Profile Photo (Upload &amp; Permanent Storage)
                 </label>
-                <div className="flex items-center gap-5">
-                  <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-2xl overflow-hidden bg-slate-100 border-2 border-[#7FA8A1] shadow-sm flex items-center justify-center text-slate-400 font-bold">
+                <div className="flex flex-col sm:flex-row sm:items-center gap-5">
+                  <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-2xl overflow-hidden bg-slate-100 border-2 border-[#7FA8A1] shadow-sm flex items-center justify-center text-slate-400 font-bold shrink-0 relative">
                     {photoPreview ? (
                       <img src={photoPreview} alt="Preview" className="w-full h-full object-cover" />
                     ) : (
                       <User className="w-10 h-10 text-[#5E8881]" />
                     )}
+                    {isPhotoUploading && (
+                      <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
+                        <Loader2 className="w-6 h-6 text-white animate-spin" />
+                      </div>
+                    )}
                   </div>
-                  <div className="space-y-1.5">
+                  <div className="space-y-2">
                     <label
                       htmlFor="profile-photo-input"
-                      className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[#5E8881] hover:bg-[#4A6F68] text-white text-xs font-bold shadow-sm cursor-pointer transition-colors"
+                      className={`inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-[#5E8881] hover:bg-[#4A6F68] text-white text-xs font-bold shadow-sm transition-colors ${
+                        isPhotoUploading ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'
+                      }`}
                     >
-                      <Camera className="w-3.5 h-3.5" />
-                      <span>Select New Image</span>
+                      {isPhotoUploading ? (
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          <span>Uploading Image...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Camera className="w-4 h-4" />
+                          <span>{photoPreview ? 'Change Photo' : 'Select Photo'}</span>
+                        </>
+                      )}
                       <input
                         id="profile-photo-input"
                         type="file"
-                        accept="image/*"
+                        accept="image/jpeg,image/png"
+                        disabled={isPhotoUploading}
                         onChange={handlePhotoSelect}
                         className="hidden"
                       />
                     </label>
                     <p className="text-[11px] text-slate-500">
-                      Supports PNG, JPG, WebP. Selected photo previews immediately.
+                      Supports PNG and JPEG (Max 1MB). Uploads permanently to private bucket <code className="text-[10px] bg-slate-100 px-1 py-0.5 rounded text-slate-700">aiml-student-photos</code>.
                     </p>
                   </div>
                 </div>
@@ -747,7 +841,7 @@ export default function StudentDashboardPage() {
                 {/* Full Name */}
                 <div>
                   <label className="block font-bold text-slate-700 mb-1" htmlFor="prof-name">
-                    Full Name
+                    Full Name <span className="text-red-500">*</span>
                   </label>
                   <input
                     id="prof-name"
@@ -759,25 +853,25 @@ export default function StudentDashboardPage() {
                   />
                 </div>
 
-                {/* Register Number */}
+                {/* Register Number (Institutional ID - Read-only) */}
                 <div>
                   <label className="block font-bold text-slate-700 mb-1" htmlFor="prof-regno">
-                    Register Number
+                    Register Number (Institutional ID)
                   </label>
                   <input
                     id="prof-regno"
                     type="text"
-                    required
+                    readOnly
+                    disabled
                     value={profileForm.registerNumber}
-                    onChange={(e) => handleProfileFieldChange('registerNumber', e.target.value.toUpperCase())}
-                    className="w-full p-2.5 rounded-xl border border-slate-300 outline-none focus:ring-1 focus:ring-[#5E8881] text-sm font-mono font-bold"
+                    className="w-full p-2.5 rounded-xl border border-slate-200 bg-slate-100 text-slate-600 font-mono font-bold cursor-not-allowed text-sm"
                   />
                 </div>
 
                 {/* Email */}
                 <div>
                   <label className="block font-bold text-slate-700 mb-1" htmlFor="prof-email">
-                    Official Student Email
+                    Official Student Email <span className="text-red-500">*</span>
                   </label>
                   <input
                     id="prof-email"
@@ -792,11 +886,11 @@ export default function StudentDashboardPage() {
                 {/* Contact Number */}
                 <div>
                   <label className="block font-bold text-slate-700 mb-1" htmlFor="prof-phone">
-                    Contact Number
+                    Contact Phone Number <span className="text-red-500">*</span>
                   </label>
                   <input
                     id="prof-phone"
-                    type="text"
+                    type="tel"
                     required
                     value={profileForm.phone}
                     onChange={(e) => handleProfileFieldChange('phone', e.target.value)}
@@ -807,7 +901,7 @@ export default function StudentDashboardPage() {
                 {/* Location */}
                 <div>
                   <label className="block font-bold text-slate-700 mb-1" htmlFor="prof-loc">
-                    Current Location / Town
+                    Current Location / Town <span className="text-red-500">*</span>
                   </label>
                   <input
                     id="prof-loc"
@@ -819,49 +913,29 @@ export default function StudentDashboardPage() {
                   />
                 </div>
 
-                {/* Academic Year Options: 2nd Year, 3rd Year, 4th Year */}
+                {/* Academic Year (Institutional Standing - Locked after onboarding) */}
                 <div>
-                  <label className="block font-bold text-slate-700 mb-1" htmlFor="prof-year">
-                    Current Academic Year
+                  <label className="block font-bold text-slate-700 mb-1">
+                    Current Academic Year &amp; Batch
                   </label>
-                  <select
-                    id="prof-year"
-                    value={profileForm.year}
-                    onChange={(e) => {
-                      const year = e.target.value;
-                      const allowed = getTermsForYear(year);
-                      setProfileForm((prev) => ({
-                        ...prev,
-                        year,
-                        term: allowed.includes(prev.term) ? prev.term : (allowed[0] || '')
-                      }));
-                      setIsProfileDirty(true);
-                    }}
-                    className="w-full p-2.5 rounded-xl border border-slate-300 bg-white outline-none focus:ring-1 focus:ring-[#5E8881] font-semibold"
-                  >
-                    <option value="2nd Year">Second Year (2nd Year)</option>
-                    <option value="3rd Year">Third Year (3rd Year)</option>
-                    <option value="4th Year">Fourth Year (4th Year)</option>
-                  </select>
+                  <div className="w-full p-2.5 rounded-xl border border-slate-200 bg-slate-50 font-semibold text-slate-700 flex items-center justify-between">
+                    <span>{activeStudent.year} ({activeStudent.batch || getBatchLabel(activeStudent.currentYear)})</span>
+                    <span className="text-[10px] bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded font-mono font-bold">LOCKED</span>
+                  </div>
                 </div>
 
-                {/* Term Options strictly filtered by selected year */}
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1" htmlFor="prof-term">
+                {/* Current Term (Locked after onboarding) */}
+                <div className="sm:col-span-2">
+                  <label className="block font-bold text-slate-700 mb-1">
                     Current Semester / Term
                   </label>
-                  <select
-                    id="prof-term"
-                    value={profileForm.term}
-                    onChange={(e) => handleProfileFieldChange('term', e.target.value)}
-                    className="w-full p-2.5 rounded-xl border border-slate-300 bg-white outline-none focus:ring-1 focus:ring-[#5E8881] font-semibold"
-                  >
-                    {getTermsForYear(profileForm.year).map((term) => (
-                      <option key={term} value={term}>
-                        Term {term} ({profileForm.year})
-                      </option>
-                    ))}
-                  </select>
+                  <div className="w-full p-2.5 rounded-xl border border-slate-200 bg-slate-50 font-semibold text-slate-700 flex items-center justify-between">
+                    <span>Term {activeStudent.currentTerm || 1} ({activeStudent.term})</span>
+                    <span className="text-[10px] bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded font-mono font-bold">LOCKED</span>
+                  </div>
+                  <p className="text-[11px] text-slate-500 mt-1">
+                    Academic cohort and term were recorded during onboarding. To request a standing update, contact the AIML HOD Office.
+                  </p>
                 </div>
               </div>
 
@@ -870,16 +944,27 @@ export default function StudentDashboardPage() {
                 <button
                   type="button"
                   onClick={handleCancelProfile}
-                  className="px-4 py-2.5 rounded-xl border border-slate-300 text-slate-700 font-bold text-xs hover:bg-slate-50 transition-colors cursor-pointer text-center"
+                  disabled={isSavingProfile || isPhotoUploading}
+                  className="px-4 py-2.5 rounded-xl border border-slate-300 text-slate-700 font-bold text-xs hover:bg-slate-50 disabled:opacity-50 transition-colors cursor-pointer text-center"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-6 py-2.5 rounded-xl bg-[#5E8881] hover:bg-[#4A6F68] text-white font-bold text-xs shadow-md transition-all cursor-pointer flex items-center justify-center gap-1.5"
+                  disabled={isSavingProfile || isPhotoUploading}
+                  className="px-6 py-2.5 rounded-xl bg-[#5E8881] hover:bg-[#4A6F68] disabled:opacity-50 text-white font-bold text-xs shadow-md transition-all cursor-pointer flex items-center justify-center gap-1.5"
                 >
-                  <Save className="w-4 h-4" />
-                  <span>Save Changes</span>
+                  {isSavingProfile ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>Saving Changes...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Save className="w-4 h-4" />
+                      <span>Save Changes</span>
+                    </>
+                  )}
                 </button>
               </div>
             </form>

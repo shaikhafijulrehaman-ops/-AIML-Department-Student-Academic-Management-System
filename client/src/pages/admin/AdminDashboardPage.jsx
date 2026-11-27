@@ -38,6 +38,7 @@ import StudentProfileModal from '../../components/StudentProfileModal';
 import CreateStudentModal from '../../components/CreateStudentModal';
 import { useAuth } from '../../context/AuthContext';
 import { getStudentLatestAcademics, ALL_SEMESTER_TERMS, getTermsForYear, YEAR_ALLOWED_TERMS } from '../../data/mockData';
+import { ACADEMIC_YEAR_TO_BATCH, getBatchLabel } from '../../utils/academicYearMapping';
 import { downloadExcelReport, downloadPdfReport, generateReportNaming } from '../../utils/reportExporter';
 import { useTheme } from '../../context/ThemeContext';
 import { THEMES } from '../../config/theme';
@@ -772,9 +773,9 @@ export default function AdminDashboardPage() {
                   2nd Year
                 </span>
                 <div className="text-2xl sm:text-3xl font-extrabold text-slate-800 mt-1">
-                  {students.filter(s => s.year === '2nd Year').length}
+                  {students.filter(s => s.currentYear === 2 || s.current_year === 2 || (s.year && String(s.year).includes('2'))).length}
                 </div>
-                <span className="text-[10px] text-slate-500">2023 Batch</span>
+                <span className="text-[10px] text-slate-500 font-semibold">{ACADEMIC_YEAR_TO_BATCH[2]}</span>
               </div>
 
               <div className="bg-white rounded-2xl p-4 border border-[#C1C8B7] shadow-sm">
@@ -782,9 +783,9 @@ export default function AdminDashboardPage() {
                   3rd Year
                 </span>
                 <div className="text-2xl sm:text-3xl font-extrabold text-slate-800 mt-1">
-                  {students.filter(s => s.year === '3rd Year').length}
+                  {students.filter(s => s.currentYear === 3 || s.current_year === 3 || (s.year && String(s.year).includes('3'))).length}
                 </div>
-                <span className="text-[10px] text-slate-500">2022 Batch</span>
+                <span className="text-[10px] text-slate-500 font-semibold">{ACADEMIC_YEAR_TO_BATCH[3]}</span>
               </div>
 
               <div className="bg-white rounded-2xl p-4 border border-[#C1C8B7] shadow-sm">
@@ -792,9 +793,9 @@ export default function AdminDashboardPage() {
                   4th Year
                 </span>
                 <div className="text-2xl sm:text-3xl font-extrabold text-slate-800 mt-1">
-                  {students.filter(s => s.year === '4th Year').length}
+                  {students.filter(s => s.currentYear === 4 || s.current_year === 4 || (s.year && String(s.year).includes('4'))).length}
                 </div>
-                <span className="text-[10px] text-slate-500">2021 Batch</span>
+                <span className="text-[10px] text-slate-500 font-semibold">{ACADEMIC_YEAR_TO_BATCH[4]}</span>
               </div>
 
               <div className="bg-white rounded-2xl p-4 border border-[#C1C8B7] shadow-sm">

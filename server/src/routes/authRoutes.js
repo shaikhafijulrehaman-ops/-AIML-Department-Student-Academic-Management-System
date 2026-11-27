@@ -148,6 +148,14 @@ router.post('/student-login', async (req, res, next) => {
       });
     }
 
+    let signedPhotoUrl = null;
+    if (profile.profile_photo_path) {
+      const { data: sData } = await supabaseAdmin.storage
+        .from('aiml-student-photos')
+        .createSignedUrl(profile.profile_photo_path, 86400);
+      signedPhotoUrl = sData?.signedUrl || null;
+    }
+
     return res.json({
       success: true,
       message: 'Student authenticated successfully.',
@@ -174,6 +182,8 @@ router.post('/student-login', async (req, res, next) => {
         sscPercentage: profile.ssc_percentage,
         intermediatePercentage: profile.intermediate_percentage,
         profilePhotoPath: profile.profile_photo_path,
+        profilePhotoUrl: signedPhotoUrl,
+        profile_photo_url: signedPhotoUrl,
         mustChangePassword: profile.must_change_password !== false,
         isProfileCompleted: Boolean(profile.is_profile_completed),
         isActive: profile.is_active
@@ -220,6 +230,14 @@ router.get('/me', requireAuth, async (req, res, next) => {
       .eq('user_id', req.user.id)
       .single();
 
+    let signedPhotoUrl = null;
+    if (profile?.profile_photo_path) {
+      const { data: sData } = await supabaseAdmin.storage
+        .from('aiml-student-photos')
+        .createSignedUrl(profile.profile_photo_path, 86400);
+      signedPhotoUrl = sData?.signedUrl || null;
+    }
+
     return res.json({
       success: true,
       user: {
@@ -231,7 +249,11 @@ router.get('/me', requireAuth, async (req, res, next) => {
       },
       mustChangePassword: profile ? profile.must_change_password !== false : true,
       isProfileCompleted: Boolean(profile?.is_profile_completed),
-      profile
+      profile: profile ? {
+        ...profile,
+        profile_photo_url: signedPhotoUrl,
+        profilePhotoUrl: signedPhotoUrl
+      } : null
     });
   } catch (err) {
     next(err);

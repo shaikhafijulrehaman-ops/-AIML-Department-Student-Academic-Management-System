@@ -104,17 +104,19 @@ router.post('/students', async (req, res, next) => {
       });
     }
 
-    // 5. Assign 'student' role in aiml_user_roles (with retry for transient network hiccups)
+    // 5. Assign 'student' role in aiml_user_roles (using upsert if available or insert fallback)
     let roleError = null;
     for (let attempt = 1; attempt <= 2; attempt++) {
-      const res = await supabaseAdmin
-        .from('aiml_user_roles')
-        .insert({
-          user_id: createdAuthUserId,
-          role: 'student',
-          is_active: true,
-          created_at: new Date().toISOString()
-        });
+      const table = supabaseAdmin.from('aiml_user_roles');
+      const payload = {
+        user_id: createdAuthUserId,
+        role: 'student',
+        is_active: true,
+        created_at: new Date().toISOString()
+      };
+      const res = typeof table.upsert === 'function'
+        ? await table.upsert(payload, { onConflict: 'user_id' })
+        : await table.insert(payload);
       roleError = res.error;
       if (!roleError) break;
       await new Promise((resolve) => setTimeout(resolve, 600));
@@ -252,11 +254,40 @@ router.get('/students', async (req, res, next) => {
       );
     }
 
+    // Generate signed URLs for private profile photos
+    const photoPaths = filtered
+      .map(s => s.profile_photo_path)
+      .filter(p => p && typeof p === 'string' && p.trim().length > 0);
+
+    let signedUrlMap = {};
+    if (photoPaths.length > 0) {
+      try {
+        const { data: signedResults } = await supabaseAdmin.storage
+          .from('aiml-student-photos')
+          .createSignedUrls(photoPaths, 86400);
+
+        if (Array.isArray(signedResults)) {
+          signedResults.forEach(r => {
+            if (r && r.path && r.signedUrl) {
+              signedUrlMap[r.path] = r.signedUrl;
+            }
+          });
+        }
+      } catch (signErr) {
+        console.error('[HODService] Error generating signed URLs for student photos:', signErr.message);
+      }
+    }
+
+    const studentsWithUrls = filtered.map(s => ({
+      ...s,
+      profile_photo_url: s.profile_photo_path ? (signedUrlMap[s.profile_photo_path] || null) : null
+    }));
+
     return res.json({
       success: true,
-      count: filtered.length,
-      data: filtered,
-      students: filtered
+      count: studentsWithUrls.length,
+      data: studentsWithUrls,
+      students: studentsWithUrls
     });
   } catch (err) {
     next(err);
@@ -306,9 +337,20 @@ router.get('/students/:id', async (req, res, next) => {
       });
     }
 
+    let signedPhotoUrl = null;
+    if (profile.profile_photo_path) {
+      const { data: sData } = await supabaseAdmin.storage
+        .from('aiml-student-photos')
+        .createSignedUrl(profile.profile_photo_path, 86400);
+      signedPhotoUrl = sData?.signedUrl || null;
+    }
+
     return res.json({
       success: true,
-      data: profile
+      data: {
+        ...profile,
+        profile_photo_url: signedPhotoUrl
+      }
     });
   } catch (err) {
     next(err);
