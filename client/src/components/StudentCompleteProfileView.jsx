@@ -75,14 +75,41 @@ export default function StudentCompleteProfileView({ student, onCompleteProfile,
   const handlePhotoUpload = (e) => {
     const file = e.target.files?.[0];
     if (file) {
-      if (file.size > 2 * 1024 * 1024) {
-        setError('Image file size must be less than 2MB.');
+      if (file.size > 20 * 1024 * 1024) {
+        setError('Image file size must be less than 20MB.');
         return;
       }
       const reader = new FileReader();
-      reader.onloadend = () => {
-        setPhotoPreview(reader.result);
-        setProfilePhoto(reader.result);
+      reader.onload = (event) => {
+        const img = new Image();
+        img.onload = () => {
+          // Client-side image resizing and compression for fast, reliable upload
+          const maxDim = 800;
+          let width = img.width;
+          let height = img.height;
+          if (width > maxDim || height > maxDim) {
+            if (width > height) {
+              height = Math.round((height * maxDim) / width);
+              width = maxDim;
+            } else {
+              width = Math.round((width * maxDim) / height);
+              height = maxDim;
+            }
+          }
+          const canvas = document.createElement('canvas');
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, width, height);
+          const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.82);
+          setPhotoPreview(compressedDataUrl);
+          setProfilePhoto(compressedDataUrl);
+        };
+        img.onerror = () => {
+          setPhotoPreview(event.target.result);
+          setProfilePhoto(event.target.result);
+        };
+        img.src = event.target.result;
       };
       reader.readAsDataURL(file);
     }
@@ -167,16 +194,27 @@ export default function StudentCompleteProfileView({ student, onCompleteProfile,
     });
 
     setIsSubmitting(true);
+    const parsedYear = parseInt(String(year).replace(/\D/g, ''), 10) || 2;
+    const parsedTerm = String(term).includes('-')
+      ? parseInt(String(term).split('-')[1], 10)
+      : (parseInt(String(term).replace(/\D/g, ''), 10) || 1);
+
     Promise.resolve(onCompleteProfile({
+      fullName: fullName.trim(),
       name: fullName.trim(),
       email: email.trim(),
+      phoneNumber: phone.trim(),
       phone: phone.trim(),
       location: location.trim(),
-      year,
-      term,
+      currentYear: parsedYear,
+      year: parsedYear,
+      currentTerm: parsedTerm,
+      term: parsedTerm,
       profilePhoto,
       sscPercentage: sscNum,
-      interType,
+      qualificationType: interType.toLowerCase().trim(),
+      interType: interType.toLowerCase().trim(),
+      intermediatePercentage: interNum,
       interPercentage: interNum,
       semesterRecords,
       onboardingStatus: 'Profile Completed',

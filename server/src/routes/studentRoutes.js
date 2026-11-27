@@ -352,15 +352,34 @@ router.post('/complete-profile', requireAuth, async (req, res, next) => {
     }
 
     // 8. Mandatory onboarding fields validation
-    const fullName = (req.body.fullName ?? req.body.full_name ?? profile.full_name ?? '').toString().trim();
+    const fullName = (req.body.fullName ?? req.body.full_name ?? req.body.name ?? profile.full_name ?? '').toString().trim();
     const email = (req.body.email ?? profile.email ?? '').toString().trim();
-    const phoneNumber = (req.body.phoneNumber ?? req.body.phone_number ?? profile.phone_number ?? '').toString().trim();
+    const phoneNumber = (req.body.phoneNumber ?? req.body.phone_number ?? req.body.phone ?? profile.phone_number ?? '').toString().trim();
     const location = (req.body.location ?? profile.location ?? '').toString().trim();
-    const currentYear = parseInt(req.body.currentYear ?? req.body.current_year ?? profile.current_year, 10);
-    const currentTerm = parseInt(req.body.currentTerm ?? req.body.current_term ?? profile.current_term, 10);
-    const qualificationType = (req.body.qualificationType ?? req.body.qualification_type ?? profile.qualification_type ?? '').toString().toLowerCase().trim();
+
+    let rawYear = req.body.currentYear ?? req.body.current_year ?? req.body.year ?? profile.current_year;
+    let currentYear = typeof rawYear === 'number' ? rawYear : parseInt(String(rawYear || '').replace(/\D/g, ''), 10);
+
+    let rawTerm = req.body.currentTerm ?? req.body.current_term ?? req.body.term ?? profile.current_term;
+    let currentTerm;
+    if (typeof rawTerm === 'number') {
+      currentTerm = rawTerm;
+    } else {
+      const termStr = String(rawTerm || '').trim();
+      if (termStr.includes('-')) {
+        currentTerm = parseInt(termStr.split('-')[1], 10);
+      } else {
+        currentTerm = parseInt(termStr.replace(/\D/g, ''), 10);
+      }
+    }
+
+    const qualificationType = (req.body.qualificationType ?? req.body.qualification_type ?? req.body.interType ?? profile.qualification_type ?? '')
+      .toString()
+      .toLowerCase()
+      .trim();
+
     const sscPercentage = parseFloat(req.body.sscPercentage ?? req.body.ssc_percentage ?? profile.ssc_percentage);
-    const intermediatePercentage = parseFloat(req.body.intermediatePercentage ?? req.body.intermediate_percentage ?? profile.intermediate_percentage);
+    const intermediatePercentage = parseFloat(req.body.intermediatePercentage ?? req.body.intermediate_percentage ?? req.body.interPercentage ?? profile.intermediate_percentage);
 
     const admissionYear = req.body.admissionYear ?? req.body.admission_year ?? profile.admission_year;
 
