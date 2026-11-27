@@ -222,18 +222,18 @@ export default function AdminDashboardPage() {
       const latest = getStudentLatestAcademics(s);
 
       // Search by Register Number (supports exact and partial matching, case-insensitive)
-      if (regQuery && !s.registerNumber.toUpperCase().includes(regQuery)) {
+      if (regQuery && !s.registerNumber.toUpperCase().includes(regQuery) && !s.name.toUpperCase().includes(regQuery)) {
         return false;
       }
-      if (appliedFilters.regNo && !s.registerNumber.toUpperCase().includes(appliedFilters.regNo.toUpperCase())) {
+      if (appliedFilters.regNo && !s.registerNumber.toUpperCase().includes(appliedFilters.regNo.toUpperCase()) && !s.name.toUpperCase().includes(appliedFilters.regNo.toUpperCase())) {
         return false;
       }
 
-      // Search by Student Name (supports exact and partial matching, case-insensitive)
-      if (nameQuery && !s.name.toLowerCase().includes(nameQuery)) {
+      // Search by Student Name (supports exact and partial matching, case-insensitive, with roll number fallback)
+      if (nameQuery && !s.name.toLowerCase().includes(nameQuery) && !s.registerNumber.toLowerCase().includes(nameQuery)) {
         return false;
       }
-      if (appliedFilters.name && !s.name.toLowerCase().includes(appliedFilters.name.toLowerCase())) {
+      if (appliedFilters.name && !s.name.toLowerCase().includes(appliedFilters.name.toLowerCase()) && !s.registerNumber.toLowerCase().includes(appliedFilters.name.toLowerCase())) {
         return false;
       }
 

@@ -255,7 +255,8 @@ router.get('/students', async (req, res, next) => {
     return res.json({
       success: true,
       count: filtered.length,
-      data: filtered
+      data: filtered,
+      students: filtered
     });
   } catch (err) {
     next(err);

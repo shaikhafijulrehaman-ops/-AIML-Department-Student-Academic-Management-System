@@ -572,6 +572,159 @@ router.get('/profile', requireAuth, async (req, res, next) => {
 });
 
 /**
+ * PUT /api/student/profile
+ * Updates the authenticated student's profile information and/or academic records.
+ */
+router.put('/profile', requireAuth, async (req, res, next) => {
+  try {
+    const authUserId = req.user.id;
+
+    // Fetch existing profile
+    const { data: profile, error: profileError } = await supabaseAdmin
+      .from('aiml_student_profiles')
+      .select('*')
+      .eq('user_id', authUserId)
+      .single();
+
+    if (profileError || !profile) {
+      return res.status(404).json({
+        success: false,
+        error: 'Student profile not found.'
+      });
+    }
+
+    if (!profile.is_active) {
+      return res.status(403).json({
+        success: false,
+        error: 'Forbidden: Inactive student account.'
+      });
+    }
+
+    const updatePayload = {
+      updated_at: new Date().toISOString()
+    };
+
+    if (req.body.fullName !== undefined || req.body.full_name !== undefined || req.body.name !== undefined) {
+      const nameVal = (req.body.fullName ?? req.body.full_name ?? req.body.name ?? '').toString().trim();
+      if (nameVal) updatePayload.full_name = nameVal;
+    }
+
+    if (req.body.email !== undefined) {
+      const emailVal = req.body.email.toString().trim();
+      if (emailVal) updatePayload.email = emailVal;
+    }
+
+    if (req.body.phoneNumber !== undefined || req.body.phone_number !== undefined || req.body.phone !== undefined) {
+      const phoneVal = (req.body.phoneNumber ?? req.body.phone_number ?? req.body.phone ?? '').toString().trim();
+      if (phoneVal) updatePayload.phone_number = phoneVal;
+    }
+
+    if (req.body.location !== undefined) {
+      const locVal = req.body.location.toString().trim();
+      if (locVal) updatePayload.location = locVal;
+    }
+
+    if (req.body.currentYear !== undefined || req.body.current_year !== undefined || req.body.year !== undefined) {
+      const rawY = req.body.currentYear ?? req.body.current_year ?? req.body.year;
+      const yNum = typeof rawY === 'number' ? rawY : parseInt(String(rawY || '').replace(/\D/g, ''), 10);
+      if (!isNaN(yNum) && yNum >= 1 && yNum <= 4) {
+        updatePayload.current_year = yNum;
+      }
+    }
+
+    if (req.body.currentTerm !== undefined || req.body.current_term !== undefined || req.body.term !== undefined) {
+      const rawT = req.body.currentTerm ?? req.body.current_term ?? req.body.term;
+      let tNum;
+      if (typeof rawT === 'number') {
+        tNum = rawT;
+      } else {
+        const s = String(rawT || '').trim();
+        tNum = s.includes('-') ? parseInt(s.split('-')[1], 10) : parseInt(s.replace(/\D/g, ''), 10);
+      }
+      if (!isNaN(tNum) && tNum >= 1 && tNum <= 2) {
+        updatePayload.current_term = tNum;
+      }
+    }
+
+    if (req.body.sscPercentage !== undefined || req.body.ssc_percentage !== undefined) {
+      const sscVal = parseFloat(req.body.sscPercentage ?? req.body.ssc_percentage);
+      if (!isNaN(sscVal) && sscVal >= 0 && sscVal <= 100) {
+        updatePayload.ssc_percentage = sscVal;
+      }
+    }
+
+    if (req.body.qualificationType !== undefined || req.body.qualification_type !== undefined || req.body.interType !== undefined) {
+      const qVal = (req.body.qualificationType ?? req.body.qualification_type ?? req.body.interType ?? '').toString().toLowerCase().trim();
+      if (qVal) updatePayload.qualification_type = qVal;
+    }
+
+    if (req.body.intermediatePercentage !== undefined || req.body.intermediate_percentage !== undefined || req.body.interPercentage !== undefined) {
+      const interVal = parseFloat(req.body.intermediatePercentage ?? req.body.intermediate_percentage ?? req.body.interPercentage);
+      if (!isNaN(interVal) && interVal >= 0 && interVal <= 100) {
+        updatePayload.intermediate_percentage = interVal;
+      }
+    }
+
+    if (req.body.profilePhoto !== undefined || req.body.profile_photo_path !== undefined) {
+      const photoVal = req.body.profilePhoto ?? req.body.profile_photo_path;
+      if (photoVal) updatePayload.profile_photo_path = photoVal;
+    }
+
+    // Update aiml_student_profiles
+    const { data: updatedProfile, error: updateError } = await supabaseAdmin
+      .from('aiml_student_profiles')
+      .update(updatePayload)
+      .eq('id', profile.id)
+      .select('*')
+      .single();
+
+    if (updateError) {
+      console.error('[StudentService] Failed to update profile:', updateError.message);
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to update student profile.'
+      });
+    }
+
+    // Process semesterRecords if provided
+    if (Array.isArray(req.body.semesterRecords)) {
+      const recordsToUpsert = [];
+      for (const rec of req.body.semesterRecords) {
+        const semNum = parseInt(rec.semesterNumber ?? rec.semNumber ?? (String(rec.term || '').replace(/\D/g, '')), 10);
+        if (!isNaN(semNum) && semNum >= 1 && semNum <= 8) {
+          const rawCgpa = rec.cgpa ?? rec.cumulativeCgpa;
+          if (rawCgpa !== null && rawCgpa !== undefined && rawCgpa !== '') {
+            const cgpaNum = parseFloat(rawCgpa);
+            if (!isNaN(cgpaNum) && cgpaNum >= 0 && cgpaNum <= 10) {
+              recordsToUpsert.push({
+                student_profile_id: profile.id,
+                semester_number: semNum,
+                cumulative_cgpa: cgpaNum,
+                updated_at: new Date().toISOString()
+              });
+            }
+          }
+        }
+      }
+
+      if (recordsToUpsert.length > 0) {
+        await supabaseAdmin
+          .from('aiml_semester_records')
+          .upsert(recordsToUpsert, { onConflict: 'student_profile_id, semester_number' });
+      }
+    }
+
+    return res.json({
+      success: true,
+      message: 'Student profile updated successfully.',
+      data: updatedProfile
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
  * GET /api/student/dashboard
  * Protected student dashboard endpoint:
  * Blocked while must_change_password = true.

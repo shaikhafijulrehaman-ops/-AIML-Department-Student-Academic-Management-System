@@ -91,9 +91,10 @@ export const AuthProvider = ({ children }) => {
       api.fetchAnalytics()
     ]);
 
-    if (studentsRes.success && Array.isArray(studentsRes.students)) {
+    const rawStudents = studentsRes?.students || studentsRes?.data || [];
+    if (studentsRes?.success && Array.isArray(rawStudents)) {
       // Map API schema to UI expectations
-      const mapped = studentsRes.students.map((s) => ({
+      const mapped = rawStudents.map((s) => ({
         id: s.id,
         registerNumber: s.register_number,
         name: s.full_name || 'Profile Pending',
@@ -107,7 +108,7 @@ export const AuthProvider = ({ children }) => {
         sscPercentage: s.ssc_percentage,
         interType: s.qualification_type,
         interPercentage: s.intermediate_percentage,
-        profilePhoto: s.profile_photo_url,
+        profilePhoto: s.profile_photo_path || s.profile_photo_url,
         mustChangePassword: Boolean(s.must_change_password),
         onboardingStatus: s.is_profile_completed ? 'Profile Completed' : 'Profile Pending',
         studentStatus: s.is_active ? 'Active' : 'Inactive',
@@ -267,6 +268,48 @@ export const AuthProvider = ({ children }) => {
     return { success: false, error: res.error || 'Profile completion failed' };
   };
 
+  // Student updates profile details (My Portfolio)
+  const updateStudentProfile = async (studentId, profileData) => {
+    const res = await api.updateStudentProfile(profileData);
+    if (res.success) {
+      setActiveStudent((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          ...profileData,
+          name: profileData.name || profileData.fullName || prev.name,
+          email: profileData.email ?? prev.email,
+          phone: profileData.phone ?? profileData.phoneNumber ?? prev.phone,
+          location: profileData.location ?? prev.location,
+          year: profileData.year ? (String(profileData.year).includes('Year') ? profileData.year : `Year ${profileData.year}`) : prev.year,
+          term: profileData.term ? (String(profileData.term).includes('Term') ? profileData.term : `Term ${profileData.term}`) : prev.term,
+          profilePhoto: profileData.profilePhoto ?? prev.profilePhoto
+        };
+      });
+      return { success: true };
+    }
+    return { success: false, error: res.error || 'Failed to update profile' };
+  };
+
+  // Student updates academic details (SSC, Inter, CGPAs)
+  const updateStudentAcademicDetails = async (studentId, academicData) => {
+    const res = await api.updateStudentProfile(academicData);
+    if (res.success) {
+      setActiveStudent((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          sscPercentage: academicData.sscPercentage ?? prev.sscPercentage,
+          interType: academicData.interType ?? prev.interType,
+          interPercentage: academicData.interPercentage ?? prev.interPercentage,
+          semesterRecords: academicData.semesterRecords ?? prev.semesterRecords
+        };
+      });
+      return { success: true };
+    }
+    return { success: false, error: res.error || 'Failed to update academic details' };
+  };
+
   // Student submits or updates a semester record
   const submitSemesterCgpa = async ({ semesterNumber, cumulativeCgpa }) => {
     const res = await api.submitSemesterRecord({ semesterNumber, cumulativeCgpa });
@@ -345,6 +388,8 @@ export const AuthProvider = ({ children }) => {
         createStudentAccount,
         changeStudentPassword,
         completeStudentOnboarding,
+        updateStudentProfile,
+        updateStudentAcademicDetails,
         submitSemesterCgpa,
         createYearSpecificUpdateRequest,
         isStudentSubmittedForRequest,

@@ -274,7 +274,8 @@ export const fetchHodStudents = async (filters = {}) => {
   const query = params.toString() ? `?${params.toString()}` : '';
   const res = await request(`/api/hod/students${query}`, { method: 'GET' });
   if (res.success || (!res.fallback && res.status !== 404 && res.status !== 405)) {
-    return res;
+    const list = res.students || res.data || [];
+    return { ...res, students: list, data: list };
   }
 
   try {
@@ -282,7 +283,7 @@ export const fetchHodStudents = async (filters = {}) => {
       .from('aiml_student_profiles')
       .select('*, aiml_semester_records(*)');
     if (error) return { success: false, error: error.message };
-    return { success: true, students: data || [] };
+    return { success: true, students: data || [], data: data || [] };
   } catch (err) {
     return { success: false, error: err.message };
   }
@@ -358,6 +359,13 @@ export const completeStudentProfile = async (studentProfileId, profileData) => {
   return request('/api/student/complete-profile', {
     method: 'POST',
     body: JSON.stringify({ studentProfileId, ...profileData })
+  });
+};
+
+export const updateStudentProfile = async (profileData) => {
+  return request('/api/student/profile', {
+    method: 'PUT',
+    body: JSON.stringify(profileData)
   });
 };
 

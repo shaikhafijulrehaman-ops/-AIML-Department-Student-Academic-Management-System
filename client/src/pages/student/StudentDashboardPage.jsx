@@ -101,22 +101,54 @@ export default function StudentDashboardPage() {
     const file = e.target.files?.[0];
     if (file) {
       const reader = new FileReader();
-      reader.onloadend = () => {
-        setPhotoPreview(reader.result);
-        setProfileForm((prev) => ({ ...prev, profilePhoto: reader.result }));
-        setIsProfileDirty(true);
+      reader.onload = (event) => {
+        const img = new Image();
+        img.onload = () => {
+          const maxDim = 800;
+          let width = img.width;
+          let height = img.height;
+          if (width > maxDim || height > maxDim) {
+            if (width > height) {
+              height = Math.round((height * maxDim) / width);
+              width = maxDim;
+            } else {
+              width = Math.round((width * maxDim) / height);
+              height = maxDim;
+            }
+          }
+          const canvas = document.createElement('canvas');
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, width, height);
+          const compressed = canvas.toDataURL('image/jpeg', 0.82);
+          setPhotoPreview(compressed);
+          setProfileForm((prev) => ({ ...prev, profilePhoto: compressed }));
+          setIsProfileDirty(true);
+        };
+        img.onerror = () => {
+          setPhotoPreview(event.target.result);
+          setProfileForm((prev) => ({ ...prev, profilePhoto: event.target.result }));
+          setIsProfileDirty(true);
+        };
+        img.src = event.target.result;
       };
       reader.readAsDataURL(file);
     }
   };
 
-  const handleSaveProfile = (e) => {
+  const handleSaveProfile = async (e) => {
     e.preventDefault();
     if (activeStudent?.id) {
-      updateStudentProfile(activeStudent.id, profileForm);
-      setIsProfileDirty(false);
-      setToastMessage('Profile changes saved successfully!');
-      setTimeout(() => setToastMessage(null), 3500);
+      const res = await updateStudentProfile(activeStudent.id, profileForm);
+      if (res?.success) {
+        setIsProfileDirty(false);
+        setToastMessage('Profile changes saved successfully!');
+        setTimeout(() => setToastMessage(null), 3500);
+      } else {
+        setToastMessage(res?.error || 'Failed to save profile changes.');
+        setTimeout(() => setToastMessage(null), 4000);
+      }
     }
   };
 
@@ -181,13 +213,18 @@ export default function StudentDashboardPage() {
     setIsAcademicDirty(true);
   };
 
-  const handleSaveAcademicDetails = (e) => {
+  const handleSaveAcademicDetails = async (e) => {
     e.preventDefault();
     if (activeStudent?.id) {
-      updateStudentAcademicDetails(activeStudent.id, academicForm);
-      setIsAcademicDirty(false);
-      setToastMessage('Academic details saved and updated successfully!');
-      setTimeout(() => setToastMessage(null), 3500);
+      const res = await updateStudentAcademicDetails(activeStudent.id, academicForm);
+      if (res?.success) {
+        setIsAcademicDirty(false);
+        setToastMessage('Academic details saved and updated successfully!');
+        setTimeout(() => setToastMessage(null), 3500);
+      } else {
+        setToastMessage(res?.error || 'Failed to save academic details.');
+        setTimeout(() => setToastMessage(null), 4000);
+      }
     }
   };
 
