@@ -20,61 +20,7 @@
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
 -- ============================================================================
--- SECTION 1: HARDENED HELPER FUNCTIONS (SECURITY DEFINER WITH search_path = '')
--- ============================================================================
-
--- ----------------------------------------------------------------------------
--- Function: public.aiml_is_service_role()
--- Identifies requests authenticated with the trusted Supabase service_role key.
--- ----------------------------------------------------------------------------
-CREATE OR REPLACE FUNCTION public.aiml_is_service_role()
-RETURNS BOOLEAN
-LANGUAGE sql
-STABLE
-SECURITY DEFINER
-SET search_path = ''
-AS $$
-  SELECT COALESCE(auth.role() = 'service_role', false);
-$$;
-
-COMMENT ON FUNCTION public.aiml_is_service_role() IS 'Returns true if the request is authenticated via the backend Supabase Admin service_role key.';
-
-REVOKE ALL ON FUNCTION public.aiml_is_service_role() FROM PUBLIC;
-REVOKE ALL ON FUNCTION public.aiml_is_service_role() FROM anon;
-GRANT EXECUTE ON FUNCTION public.aiml_is_service_role() TO authenticated, service_role;
-
-
--- ----------------------------------------------------------------------------
--- Function: public.aiml_is_hod()
--- Hardened HOD verification helper. Identifies actual authenticated HOD users.
--- Does NOT conflate service_role with HOD identity.
--- SECURITY DEFINER with empty search_path to prevent search_path hijacking.
--- ----------------------------------------------------------------------------
-CREATE OR REPLACE FUNCTION public.aiml_is_hod()
-RETURNS BOOLEAN
-LANGUAGE sql
-STABLE
-SECURITY DEFINER
-SET search_path = ''
-AS $$
-  SELECT EXISTS (
-    SELECT 1
-    FROM public.aiml_user_roles
-    WHERE user_id = auth.uid()
-      AND role = 'hod'
-      AND is_active = true
-  );
-$$;
-
-COMMENT ON FUNCTION public.aiml_is_hod() IS 'Returns true if the authenticated user has verified HOD status in the AIML department.';
-
-REVOKE ALL ON FUNCTION public.aiml_is_hod() FROM PUBLIC;
-REVOKE ALL ON FUNCTION public.aiml_is_hod() FROM anon;
-GRANT EXECUTE ON FUNCTION public.aiml_is_hod() TO authenticated, service_role;
-
-
--- ============================================================================
--- SECTION 2: APPLICATION TABLES (WITH ONBOARDING & HISTORY PRESERVATION)
+-- SECTION 1: APPLICATION TABLES (WITH ONBOARDING & HISTORY PRESERVATION)
 -- ============================================================================
 
 -- ----------------------------------------------------------------------------
@@ -238,6 +184,60 @@ CREATE TABLE IF NOT EXISTS public.aiml_audit_logs (
 );
 
 COMMENT ON TABLE public.aiml_audit_logs IS 'System audit log for administrative oversight. Never logs credentials or secrets.';
+
+
+-- ============================================================================
+-- SECTION 2: HARDENED HELPER FUNCTIONS (SECURITY DEFINER WITH search_path = '')
+-- ============================================================================
+
+-- ----------------------------------------------------------------------------
+-- Function: public.aiml_is_service_role()
+-- Identifies requests authenticated with the trusted Supabase service_role key.
+-- ----------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.aiml_is_service_role()
+RETURNS BOOLEAN
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+  SELECT COALESCE(auth.role() = 'service_role', false);
+$$;
+
+COMMENT ON FUNCTION public.aiml_is_service_role() IS 'Returns true if the request is authenticated via the backend Supabase Admin service_role key.';
+
+REVOKE ALL ON FUNCTION public.aiml_is_service_role() FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.aiml_is_service_role() FROM anon;
+GRANT EXECUTE ON FUNCTION public.aiml_is_service_role() TO authenticated, service_role;
+
+
+-- ----------------------------------------------------------------------------
+-- Function: public.aiml_is_hod()
+-- Hardened HOD verification helper. Identifies actual authenticated HOD users.
+-- Does NOT conflate service_role with HOD identity.
+-- SECURITY DEFINER with empty search_path to prevent search_path hijacking.
+-- ----------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.aiml_is_hod()
+RETURNS BOOLEAN
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+  SELECT EXISTS (
+    SELECT 1
+    FROM public.aiml_user_roles
+    WHERE user_id = auth.uid()
+      AND role = 'hod'
+      AND is_active = true
+  );
+$$;
+
+COMMENT ON FUNCTION public.aiml_is_hod() IS 'Returns true if the authenticated user has verified HOD status in the AIML department.';
+
+REVOKE ALL ON FUNCTION public.aiml_is_hod() FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.aiml_is_hod() FROM anon;
+GRANT EXECUTE ON FUNCTION public.aiml_is_hod() TO authenticated, service_role;
 
 
 -- ============================================================================
