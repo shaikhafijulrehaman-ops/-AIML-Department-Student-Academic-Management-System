@@ -90,7 +90,7 @@ export default function HodLoginPage() {
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <label className="block text-xs font-bold text-slate-700 mb-1.5" htmlFor="hod-email">
-                HOD Login ID / Email
+                HOD Email Address
               </label>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
@@ -101,7 +101,8 @@ export default function HodLoginPage() {
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="hod.aiml@mictech.ac.in"
+                  placeholder="Enter your email address"
+                  autoComplete="username"
                   className="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-300 focus:border-[#4A192B] focus:ring-2 focus:ring-[#4A192B]/20 text-xs sm:text-sm text-slate-800 outline-none transition-all"
                   required
                 />
@@ -122,6 +123,7 @@ export default function HodLoginPage() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="Enter your administrative password"
+                  autoComplete="current-password"
                   className="w-full pl-10 pr-10 py-2.5 rounded-xl border border-slate-300 focus:border-[#4A192B] focus:ring-2 focus:ring-[#4A192B]/20 text-xs sm:text-sm text-slate-800 outline-none transition-all"
                   required
                 />
@@ -138,25 +140,14 @@ export default function HodLoginPage() {
 
             <button
               type="submit"
-              className="w-full min-h-[44px] flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-[#4A192B] hover:bg-[#35101E] active:scale-[0.99] text-white font-bold text-xs sm:text-sm shadow-md shadow-[#4A192B]/20 transition-all cursor-pointer"
+              disabled={isSubmitting}
+              className="w-full min-h-[44px] flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-[#4A192B] hover:bg-[#35101E] active:scale-[0.99] text-white font-bold text-xs sm:text-sm shadow-md shadow-[#4A192B]/20 transition-all cursor-pointer disabled:opacity-60"
             >
               <Shield className="w-4 h-4 text-[#FF6B1A]" />
-              <span>Login to HOD Portal</span>
+              <span>{isSubmitting ? 'Authenticating...' : 'Login to HOD Portal'}</span>
               <ArrowRight className="w-4 h-4" />
             </button>
           </form>
-
-          {/* Demo Helper Box */}
-          <div className="pt-4 border-t border-slate-100 flex items-center justify-between text-xs">
-            <span className="text-slate-500">Demo Account Active</span>
-            <button
-              type="button"
-              onClick={handleFillDemo}
-              className="text-[#FF6B1A] hover:underline font-bold"
-            >
-              Reset Demo Credentials
-            </button>
-          </div>
         </div>
       </main>
 

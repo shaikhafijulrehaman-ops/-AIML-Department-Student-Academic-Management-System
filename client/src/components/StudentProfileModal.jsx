@@ -21,8 +21,13 @@ import {
   ShieldCheck,
   Info
 } from 'lucide-react';
-import { ALL_SEMESTER_TERMS, getMaxCompletedSemForTerm } from '../data/mockData';
-import { getBatchLabel, getMaxCompletedSemesters } from '../utils/academicYearMapping';
+import {
+  ALL_SEMESTER_CONFIG,
+  getStudentMaxCompletedSem,
+  getSemesterCgpaDisplay,
+  getSemesterUpdateStatus,
+  getStudentLatestAcademics
+} from '../utils/academicStatusUtils';
 
 /**
  * StudentProfileModal
@@ -37,6 +42,8 @@ export default function StudentProfileModal({
   isOpen, 
   onClose, 
   latestAcademics,
+  campaigns = [],
+  updateRequests = [],
   onResetPassword,
   onToggleStatus,
   onDeleteStudent
@@ -61,58 +68,28 @@ export default function StudentProfileModal({
   if (!isOpen || !student) return null;
 
   const isPending = student.onboardingStatus === 'Profile Pending';
-  const currentYearNum = student.currentYear || parseInt(String(student.year || '').replace(/\D/g, ''), 10);
-  const currentTermNum = student.currentTerm || (student.term && String(student.term).includes('-') ? parseInt(String(student.term).split('-')[1], 10) : parseInt(String(student.term || '').replace(/\D/g, ''), 10)) || 1;
+  const allCampaigns = (updateRequests && updateRequests.length > 0) ? updateRequests : campaigns;
+  const effectiveLatest = latestAcademics || getStudentLatestAcademics(student);
 
-  const maxCompletedSem = (currentYearNum && currentYearNum >= 2)
-    ? getMaxCompletedSemesters(currentYearNum, currentTermNum)
-    : 0;
-
-  // Determine semester records status
-  const semesterTableData = ALL_SEMESTER_TERMS.map((item) => {
-    const isEligible = !isPending && maxCompletedSem > 0 && item.semNumber <= maxCompletedSem;
-    const rec = (student.semesterRecords || []).find(
-      (r) => r.semesterNumber === item.semNumber || r.semNumber === item.semNumber || r.term === item.term || r.term === `Semester ${item.semNumber}`
-    );
-    const hasCgpa = rec && rec.cgpa !== null && rec.cgpa !== undefined && rec.cgpa !== '';
-
-    let updateStatus = 'Not Applicable';
-    let statusBadgeClass = 'bg-slate-100 text-slate-500 border-slate-200';
-    let displayCgpa = '—';
-
-    if (isPending) {
-      updateStatus = 'Profile Pending';
-      statusBadgeClass = 'bg-amber-50 text-amber-800 border-amber-200';
-      displayCgpa = 'Not Provided';
-    } else if (isEligible) {
-      if (hasCgpa && Number(rec.cgpa) > 0) {
-        updateStatus = 'Updated';
-        statusBadgeClass = 'bg-emerald-50 text-emerald-800 border-emerald-300 font-bold';
-        displayCgpa = Number(rec.cgpa).toFixed(2);
-      } else {
-        updateStatus = 'Pending Submission';
-        statusBadgeClass = 'bg-amber-50 text-amber-800 border-amber-300 font-bold';
-        displayCgpa = 'Pending';
-      }
-    } else {
-      updateStatus = 'Upcoming / Ongoing';
-      statusBadgeClass = 'bg-slate-100 text-slate-400 border-slate-200';
-      displayCgpa = '—';
-    }
+  // Determine semester records status using centralized consistency utility
+  const semesterTableData = ALL_SEMESTER_CONFIG.map((item) => {
+    const cgpaInfo = getSemesterCgpaDisplay(student, item.semNumber);
+    const statusInfo = getSemesterUpdateStatus(student, item.semNumber, allCampaigns);
 
     return {
       term: item.term,
       semNumber: item.semNumber,
       title: item.title,
       year: item.year,
-      cgpa: displayCgpa,
-      updateStatus,
-      statusBadgeClass,
-      isEligible
+      cgpa: cgpaInfo.display,
+      rawCgpa: cgpaInfo.numericCgpa,
+      updateStatus: statusInfo.status,
+      statusBadgeClass: statusInfo.badgeClass,
+      isEligible: cgpaInfo.isEligible
     };
   });
 
-  const updatedSemCount = semesterTableData.filter((s) => s.updateStatus === 'Updated').length;
+  const updatedSemCount = semesterTableData.filter((s) => s.updateStatus === 'Submitted').length;
   const eligibleSemCount = semesterTableData.filter((s) => s.isEligible).length;
 
   let complianceStatusText = 'No Academic Records';
@@ -513,15 +490,27 @@ export default function StudentProfileModal({
                 <div className="px-3 py-1.5 rounded-xl bg-slate-100 border border-slate-200 text-right">
                   <span className="text-[9px] uppercase font-bold text-slate-500 block">Latest Completed</span>
                   <span className="font-extrabold text-xs text-slate-900">
-                    {latestAcademics?.latestSemester ? `Sem ${latestAcademics.latestSemester}` : 'Not Provided'}
+                    {effectiveLatest?.displaySemester || 'Not Provided'}
                   </span>
                 </div>
-                <div className="px-3 py-1.5 rounded-xl bg-emerald-50 border border-emerald-300 text-right">
-                  <span className="text-[9px] uppercase font-bold text-emerald-700 block">Latest CGPA</span>
-                  <span className="font-black text-sm text-emerald-800">
-                    {latestAcademics?.latestCgpa !== null && latestAcademics?.latestCgpa !== undefined
-                      ? Number(latestAcademics.latestCgpa).toFixed(2)
-                      : 'Not Provided'}
+                <div className={`px-3 py-1.5 rounded-xl text-right border ${
+                  effectiveLatest?.latestCgpa !== null && effectiveLatest?.latestCgpa !== undefined
+                    ? 'bg-emerald-50 border-emerald-300'
+                    : 'bg-slate-100 border-slate-200'
+                }`}>
+                  <span className={`text-[9px] uppercase font-bold block ${
+                    effectiveLatest?.latestCgpa !== null && effectiveLatest?.latestCgpa !== undefined
+                      ? 'text-emerald-700'
+                      : 'text-slate-500'
+                  }`}>
+                    Latest CGPA
+                  </span>
+                  <span className={`font-black text-sm ${
+                    effectiveLatest?.latestCgpa !== null && effectiveLatest?.latestCgpa !== undefined
+                      ? 'text-emerald-800'
+                      : 'text-slate-500 italic'
+                  }`}>
+                    {effectiveLatest?.displayCgpa || 'Not Provided'}
                   </span>
                 </div>
               </div>

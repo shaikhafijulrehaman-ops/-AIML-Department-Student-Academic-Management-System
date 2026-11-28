@@ -26,6 +26,50 @@ export function isValidUUID(id) {
 }
 
 /**
+ * Synchronizes active matching update campaigns when semester CGPA records are inserted or updated.
+ * 1. Matches exact student profile id
+ * 2. Matches target semester number
+ * 3. Matches student's current academic year and term
+ * 4. Only marks matching active campaign assignments as 'submitted'
+ * 5. Sets submitted_at timestamp
+ */
+export async function syncMatchingCampaigns(studentProfileId, semesterNumbers, currentYear, currentTerm) {
+  if (!studentProfileId || !Array.isArray(semesterNumbers) || semesterNumbers.length === 0) return;
+
+  try {
+    const { data: activeCampaigns, error: campErr } = await supabaseAdmin
+      .from('aiml_update_campaigns')
+      .select('id, target_semester, target_year, target_term, is_active')
+      .eq('is_active', true)
+      .in('target_semester', semesterNumbers);
+
+    if (campErr || !activeCampaigns || activeCampaigns.length === 0) return;
+
+    const matchingCampaignIds = activeCampaigns
+      .filter((c) => {
+        const matchesYear = !c.target_year || c.target_year === currentYear;
+        const matchesTerm = !c.target_term || c.target_term === currentTerm;
+        return matchesYear && matchesTerm;
+      })
+      .map((c) => c.id);
+
+    if (matchingCampaignIds.length === 0) return;
+
+    await supabaseAdmin
+      .from('aiml_campaign_students')
+      .update({
+        status: 'submitted',
+        submitted_at: new Date().toISOString()
+      })
+      .eq('student_profile_id', studentProfileId)
+      .in('campaign_id', matchingCampaignIds)
+      .eq('status', 'pending');
+  } catch (err) {
+    // Non-fatal
+  }
+}
+
+/**
  * Authentication Middleware:
  * Validates the caller's Supabase JWT from the Authorization header.
  * Attaches req.user (authenticated Supabase user object) and req.token.
@@ -1006,6 +1050,10 @@ router.put('/profile', requireAuth, async (req, res, next) => {
             error: 'Failed to persist semester records. Please try again.'
           });
         }
+
+        // Programmatic Campaign Status Synchronization
+        const savedSemNums = recordsToUpsert.map((r) => r.semester_number);
+        await syncMatchingCampaigns(profile.id, savedSemNums, profile.current_year, profile.current_term);
       }
     }
 
@@ -1134,6 +1182,9 @@ router.post('/records', requireAuth, requirePasswordChanged, requireProfileCompl
         error: 'Failed to record semester CGPA. Please try again.'
       });
     }
+
+    // Programmatic Campaign Status Synchronization
+    await syncMatchingCampaigns(profile.id, [semNum], profile.current_year, profile.current_term);
 
     return res.status(201).json({
       success: true,

@@ -44,7 +44,8 @@ import StudentProfileModal from '../../components/StudentProfileModal';
 import CreateStudentModal from '../../components/CreateStudentModal';
 import ErrorBoundary from '../../components/ErrorBoundary';
 import { useAuth } from '../../context/AuthContext';
-import { getStudentLatestAcademics, ALL_SEMESTER_TERMS, getTermsForYear, YEAR_ALLOWED_TERMS } from '../../data/mockData';
+import { ALL_SEMESTER_TERMS, getTermsForYear, YEAR_ALLOWED_TERMS } from '../../data/mockData';
+import { getStudentLatestAcademics } from '../../utils/academicStatusUtils';
 import { ACADEMIC_YEAR_TO_BATCH, getBatchLabel } from '../../utils/academicYearMapping';
 import { downloadExcelReport, downloadPdfReport, generateReportNaming } from '../../utils/reportExporter';
 import { useTheme } from '../../context/ThemeContext';
@@ -93,6 +94,14 @@ export default function AdminDashboardPage() {
   // Modal: Add Student Account
   const [isAddStudentOpen, setIsAddStudentOpen] = useState(false);
   const [toastMessage, setToastMessage] = useState(null);
+
+  const showToast = useCallback((msg, type = 'success') => {
+    const toastObj = typeof msg === 'string' ? { type, text: msg } : msg;
+    setToastMessage(toastObj);
+    setTimeout(() => {
+      setToastMessage((prev) => (prev === toastObj ? null : prev));
+    }, 5000);
+  }, []);
 
   // Administrative Account Action Modals
   const [resetModalStudent, setResetModalStudent] = useState(null);
@@ -635,6 +644,34 @@ export default function AdminDashboardPage() {
 
   return (
     <div className="min-h-screen bg-[#D7DCCF] text-[#1E231D] flex flex-col font-sans antialiased pb-12 md:pb-0 w-full max-w-full overflow-x-hidden">
+      {/* Top Floating Feedback Toast (Mobile & Desktop) */}
+      {toastMessage && (
+        <div className="fixed top-4 right-4 left-4 sm:left-auto sm:right-6 z-50 max-w-md animate-in slide-in-from-top-3">
+          <div className={`p-4 rounded-2xl border shadow-xl flex items-center justify-between gap-3 text-xs sm:text-sm font-semibold ${
+            (toastMessage.type === 'error' || toastMessage.type === 'danger')
+              ? 'bg-rose-50 border-rose-300 text-rose-900 shadow-rose-900/10'
+              : 'bg-emerald-50 border-emerald-300 text-emerald-900 shadow-emerald-900/10'
+          }`}>
+            <div className="flex items-center gap-2.5">
+              {(toastMessage.type === 'error' || toastMessage.type === 'danger') ? (
+                <AlertCircle className="w-5 h-5 text-rose-600 shrink-0" />
+              ) : (
+                <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+              )}
+              <span>{toastMessage.text || toastMessage}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setToastMessage(null)}
+              className="p-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-black/5 cursor-pointer shrink-0"
+              aria-label="Dismiss notification"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* ============================================================== */}
       {/* MOBILE FLOATING GLASSMORPHISM PILL NAVIGATION (md:hidden)      */}
       {/* ============================================================== */}
@@ -992,23 +1029,6 @@ export default function AdminDashboardPage() {
         {/* ============================================================== */}
         {activeTab === 'directory' && (
           <div className="space-y-4 sm:space-y-6">
-            {/* Feedback Toast */}
-            {toastMessage && (
-              <div className="p-3.5 rounded-2xl bg-emerald-50 border border-emerald-300 text-emerald-900 text-xs font-semibold flex items-center justify-between shadow-xs animate-in fade-in">
-                <div className="flex items-center gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                  <span>{toastMessage}</span>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setToastMessage(null)}
-                  className="text-emerald-700 hover:text-emerald-900 cursor-pointer"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-            )}
-
             {/* ONBOARDING STATUS SUMMARY CARDS */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
               {/* 1. Total Student Accounts */}
@@ -1692,12 +1712,12 @@ export default function AdminDashboardPage() {
 
                             {/* 10. Latest Sem */}
                             <td className="py-2.5 px-2 text-center font-bold text-[#4A192B]">
-                              {latest.latestSemester && latest.latestSemester !== '—' ? latest.latestSemester : '—'}
+                              {latest.latestSemesterNumber ? `Sem ${latest.latestSemesterNumber}` : '—'}
                             </td>
 
                             {/* 11. Latest CGPA */}
                             <td className="py-2.5 px-3 text-center font-bold text-emerald-700">
-                              {latest.latestCgpa !== null ? latest.latestCgpa.toFixed(2) : '—'}
+                              {latest.latestCgpa !== null ? Number(latest.latestCgpa).toFixed(2) : '—'}
                             </td>
 
                             {/* 12. Actions Group */}
@@ -1839,13 +1859,21 @@ export default function AdminDashboardPage() {
                           <div className="p-2 rounded-xl bg-slate-50 border border-slate-200">
                             <span className="text-slate-400 block text-[9px] uppercase font-bold">Latest Completed</span>
                             <span className="font-bold text-slate-800">
-                              {latest.latestSemester && latest.latestSemester !== '—' ? `Sem ${latest.latestSemester}` : 'Not Provided'}
+                              {latest.displaySemester || (latest.latestSemesterNumber ? `Sem ${latest.latestSemesterNumber}` : 'Not Provided')}
                             </span>
                           </div>
-                          <div className="p-2 rounded-xl bg-emerald-50 border border-emerald-200">
-                            <span className="text-emerald-700 block text-[9px] uppercase font-bold">Latest CGPA</span>
-                            <span className="font-extrabold text-emerald-800 text-xs">
-                              {latest.latestCgpa !== null ? latest.latestCgpa.toFixed(2) : '—'}
+                          <div className={`p-2 rounded-xl border ${
+                            latest.latestCgpa !== null ? 'bg-emerald-50 border-emerald-200' : 'bg-slate-50 border-slate-200'
+                          }`}>
+                            <span className={`block text-[9px] uppercase font-bold ${
+                              latest.latestCgpa !== null ? 'text-emerald-700' : 'text-slate-400'
+                            }`}>
+                              Latest CGPA
+                            </span>
+                            <span className={`text-xs font-extrabold ${
+                              latest.latestCgpa !== null ? 'text-emerald-800' : 'text-slate-500 italic'
+                            }`}>
+                              {latest.displayCgpa || (latest.latestCgpa !== null ? Number(latest.latestCgpa).toFixed(2) : 'Not Provided')}
                             </span>
                           </div>
                           <div className="p-2 rounded-xl bg-slate-50 border border-slate-200">
@@ -2594,6 +2622,8 @@ export default function AdminDashboardPage() {
           isOpen={Boolean(selectedStudentForModal)}
           onClose={() => setViewingStudentId(null)}
           latestAcademics={selectedStudentForModal ? getStudentLatestAcademics(selectedStudentForModal) : null}
+          campaigns={updateRequests}
+          updateRequests={updateRequests}
           onResetPassword={(std) => {
             setViewingStudentId(null);
             setResetModalStudent(std);
@@ -2663,13 +2693,12 @@ export default function AdminDashboardPage() {
                         const res = await resetStudentPassword(resetModalStudent.id);
                         if (res && res.success) {
                           setTempPasswordResult(res.temporaryPassword);
-                          setToastMessage(`Password reset successfully for ${resetModalStudent.registerNumber}.`);
-                          setTimeout(() => setToastMessage(null), 5000);
+                          showToast(`Password reset successfully for ${resetModalStudent.registerNumber}.`, 'success');
                         } else {
-                          alert(res?.error || 'Failed to reset student password.');
+                          showToast(res?.error || 'Failed to reset student password. Please try again.', 'error');
                         }
                       } catch (err) {
-                        alert(err?.message || 'Error occurred while resetting password.');
+                        showToast(err?.message || 'Error occurred while resetting password.', 'error');
                       } finally {
                         setIsResetting(false);
                       }
@@ -2802,14 +2831,18 @@ export default function AdminDashboardPage() {
                     try {
                       const res = await updateStudentStatus(statusModalStudent.id, newActive);
                       if (res && res.success) {
-                        setToastMessage(`Student ${statusModalStudent.registerNumber} ${newActive ? 'reactivated' : 'deactivated'} successfully.`);
-                        setTimeout(() => setToastMessage(null), 5000);
+                        showToast(
+                          newActive
+                            ? 'Student account reactivated successfully.'
+                            : 'Student account deactivated successfully.',
+                          'success'
+                        );
                         setStatusModalStudent(null);
                       } else {
-                        alert(res?.error || 'Failed to update student status.');
+                        showToast(res?.error || 'Failed to update student status. Please try again.', 'error');
                       }
                     } catch (err) {
-                      alert(err?.message || 'Error occurred while updating student status.');
+                      showToast(err?.message || 'Failed to update student status. Please try again.', 'error');
                     } finally {
                       setIsUpdatingStatus(false);
                     }
@@ -2933,14 +2966,14 @@ export default function AdminDashboardPage() {
                       try {
                         const res = await deleteStudentAccount(deleteModalStudent.id, deleteConfirmRegNo.trim());
                         if (res && res.success) {
-                          setToastMessage(`Student account "${deleteModalStudent.registerNumber}" deleted permanently.`);
-                          setTimeout(() => setToastMessage(null), 5000);
+                          showToast('Student account deleted successfully.', 'success');
                           setDeleteModalStudent(null);
+                          setDeleteConfirmRegNo('');
                         } else {
-                          alert(res?.error || 'Failed to delete student account.');
+                          showToast(res?.error || 'Failed to delete student. Please try again.', 'error');
                         }
                       } catch (err) {
-                        alert(err?.message || 'Error occurred while deleting student.');
+                        showToast(err?.message || 'Failed to delete student. Please try again.', 'error');
                       } finally {
                         setIsDeletingStudent(false);
                       }
@@ -2968,8 +3001,7 @@ export default function AdminDashboardPage() {
         onCreateStudent={({ registerNumber, initialPassword }) => {
           const res = createStudentAccount({ registerNumber, initialPassword });
           if (res.success) {
-            setToastMessage(`Student account "${registerNumber}" created successfully (Profile Pending).`);
-            setTimeout(() => setToastMessage(null), 5000);
+            showToast(`Student account "${registerNumber}" created successfully (Profile Pending).`, 'success');
           }
           return res;
         }}

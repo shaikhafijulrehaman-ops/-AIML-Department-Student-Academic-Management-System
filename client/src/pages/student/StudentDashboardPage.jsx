@@ -29,8 +29,9 @@ import {
 import BRANDING from '../../config/branding';
 import CollegeLogo from '../../components/CollegeLogo';
 import { useAuth } from '../../context/AuthContext';
-import { getMaxCompletedSemForTerm, getStudentLatestAcademics, ALL_SEMESTER_TERMS, getTermsForYear, YEAR_ALLOWED_TERMS } from '../../data/mockData';
+import { getMaxCompletedSemForTerm, ALL_SEMESTER_TERMS, getTermsForYear, YEAR_ALLOWED_TERMS } from '../../data/mockData';
 import { getBatchLabel, getAcademicYearDisplay, getMaxCompletedSemesters } from '../../utils/academicYearMapping';
+import { getStudentLatestAcademics } from '../../utils/academicStatusUtils';
 import { useTheme } from '../../context/ThemeContext';
 import { THEMES } from '../../config/theme';
 import StudentChangePasswordView from '../../components/StudentChangePasswordView';
@@ -809,7 +810,7 @@ export default function StudentDashboardPage() {
               <div className="bg-white rounded-2xl p-4 border border-[#D4CAB4] shadow-sm">
                 <span className="text-slate-500 font-bold block">Latest Completed</span>
                 <div className="text-2xl font-extrabold text-[#5E8881] mt-1">
-                  Sem {latestAcademics.latestSemester}
+                  {latestAcademics.displaySemester || (latestAcademics.latestSemester ? `Sem ${latestAcademics.latestSemester}` : 'Not Provided')}
                 </div>
                 <span className="text-[10px] text-slate-400">Recorded semester</span>
               </div>
@@ -827,7 +828,7 @@ export default function StudentDashboardPage() {
               <div className="bg-white rounded-2xl p-4 border border-[#D4CAB4] shadow-sm">
                 <span className="text-slate-500 font-bold block">Latest CGPA</span>
                 <div className="text-2xl font-extrabold text-emerald-700 mt-1">
-                  {latestAcademics.latestCgpa !== null ? latestAcademics.latestCgpa.toFixed(2) : '—'}
+                  {latestAcademics.displayCgpa || (latestAcademics.latestCgpa !== null ? Number(latestAcademics.latestCgpa).toFixed(2) : 'Not Provided')}
                 </div>
                 <span className="text-[10px] text-slate-400">Cumulative score</span>
               </div>

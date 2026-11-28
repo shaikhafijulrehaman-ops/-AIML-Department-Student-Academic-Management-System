@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { GraduationCap, Eye, EyeOff, Lock, User, ArrowRight, AlertCircle, Info } from 'lucide-react';
 import BRANDING from '../../config/branding';
 import CollegeLogo from '../../components/CollegeLogo';
+import CollegeBrandHeader from '../../components/CollegeBrandHeader';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
 import { THEMES } from '../../config/theme';
@@ -45,23 +46,13 @@ export default function StudentLoginPage() {
   return (
     <div className="min-h-screen bg-[#E8E0CF] flex flex-col justify-between text-[#1F2926]">
       {/* Top Header */}
-      <header className="bg-white/85 backdrop-blur-md border-b border-[#D4CAB4] py-3.5 px-4 sm:px-8 shadow-sm">
-        <div className="max-w-6xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <CollegeLogo size="sm" />
-            <div className="leading-tight">
-              <span className="text-xs sm:text-sm font-bold text-slate-900 block truncate">
-                {BRANDING.collegeName}
-              </span>
-              <span className="text-[11px] font-bold text-[#5E8881]">
-                {BRANDING.departmentName} &bull; Student Portal
-              </span>
-            </div>
-          </div>
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[#7FA8A1]/20 text-[#3D6660] text-xs font-bold">
-            <GraduationCap className="w-3.5 h-3.5 text-[#5E8881]" />
-            Student Login
-          </span>
+      <header className="bg-white/85 backdrop-blur-md border-b border-[#D4CAB4] py-2.5 sm:py-3.5 px-3 sm:px-8 shadow-sm sticky top-0 z-30">
+        <div className="max-w-6xl mx-auto">
+          <CollegeBrandHeader
+            badgeText="Student Login"
+            badgeIcon={GraduationCap}
+            variant="student"
+          />
         </div>
       </header>
 

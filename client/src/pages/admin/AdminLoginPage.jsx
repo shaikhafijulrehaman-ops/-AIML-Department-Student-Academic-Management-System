@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Shield, Eye, EyeOff, Lock, Mail, ArrowRight, AlertCircle, Building2 } from 'lucide-react';
 import BRANDING from '../../config/branding';
 import CollegeLogo from '../../components/CollegeLogo';
+import CollegeBrandHeader from '../../components/CollegeBrandHeader';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
 import { THEMES } from '../../config/theme';
@@ -45,23 +46,13 @@ export default function AdminLoginPage() {
   return (
     <div className="min-h-screen bg-[#D7DCCF] flex flex-col justify-between text-[#1E231D]">
       {/* Header */}
-      <header className="bg-white/85 backdrop-blur-md border-b border-[#C1C8B7] py-3.5 px-4 sm:px-8 shadow-sm">
-        <div className="max-w-6xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <CollegeLogo size="sm" />
-            <div className="leading-tight">
-              <span className="text-xs sm:text-sm font-bold text-slate-900 block truncate">
-                {BRANDING.collegeName}
-              </span>
-              <span className="text-[11px] font-bold text-[#4A192B]">
-                {BRANDING.departmentName} &bull; Admin Portal
-              </span>
-            </div>
-          </div>
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[#4A192B]/10 text-[#4A192B] text-xs font-bold">
-            <Shield className="w-3.5 h-3.5 text-[#FF6B1A]" />
-            HOD / Admin Login
-          </span>
+      <header className="bg-white/85 backdrop-blur-md border-b border-[#C1C8B7] py-2.5 sm:py-3.5 px-3 sm:px-8 shadow-sm sticky top-0 z-30">
+        <div className="max-w-6xl mx-auto">
+          <CollegeBrandHeader
+            badgeText="HOD / Admin Login"
+            badgeIcon={Shield}
+            variant="hod"
+          />
         </div>
       </header>
 
@@ -98,7 +89,7 @@ export default function AdminLoginPage() {
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <label className="block text-xs font-bold text-slate-700 mb-1.5" htmlFor="admin-email">
-                HOD Login ID / Email
+                HOD Email Address
               </label>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
@@ -109,7 +100,8 @@ export default function AdminLoginPage() {
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="hod.aiml@mictech.ac.in"
+                  placeholder="Enter your email address"
+                  autoComplete="username"
                   className="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-300 focus:border-[#4A192B] focus:ring-2 focus:ring-[#4A192B]/20 text-xs sm:text-sm text-slate-800 outline-none transition-all"
                   required
                 />
@@ -130,6 +122,7 @@ export default function AdminLoginPage() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="Enter administrative password"
+                  autoComplete="current-password"
                   className="w-full pl-10 pr-10 py-2.5 rounded-xl border border-slate-300 focus:border-[#4A192B] focus:ring-2 focus:ring-[#4A192B]/20 text-xs sm:text-sm text-slate-800 outline-none transition-all"
                   required
                 />

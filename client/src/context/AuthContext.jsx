@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback } fr
 import * as api from '../services/api';
 import { getMaxCompletedSemForTerm, getTermsForYear } from '../data/mockData';
 import { getBatchLabel, getAcademicYearDisplay } from '../utils/academicYearMapping';
+import { isStudentSubmittedForCampaign, getStudentLatestAcademics } from '../utils/academicStatusUtils';
 
 const AuthContext = createContext(null);
 
@@ -420,15 +421,26 @@ export const AuthProvider = ({ children }) => {
     const res = await api.submitSemesterRecord({ semesterNumber, cumulativeCgpa });
     if (res.success) {
       const recordsRes = await api.fetchStudentRecords();
-      if (recordsRes.success && Array.isArray(recordsRes.records)) {
-        const updatedRecords = recordsRes.records.map((r) => ({
-          term: `Semester ${r.semester_number}`,
-          semesterNumber: r.semester_number,
-          cgpa: r.cumulative_cgpa,
+      const rawRecords = recordsRes.data || recordsRes.records || [];
+      if (recordsRes.success && Array.isArray(rawRecords)) {
+        const updatedRecords = rawRecords.map((r) => ({
+          term: `Semester ${r.semester_number ?? r.semesterNumber}`,
+          semNumber: r.semester_number ?? r.semesterNumber,
+          semesterNumber: r.semester_number ?? r.semesterNumber,
+          cgpa: r.cumulative_cgpa ?? r.cumulativeCgpa ?? r.cgpa,
           status: 'Updated',
-          submittedAt: r.submitted_at
+          submittedAt: r.submitted_at || r.updated_at || r.updatedAt
         }));
         setActiveStudent((prev) => (prev ? { ...prev, semesterRecords: updatedRecords } : prev));
+      }
+      try {
+        const campRes = await api.fetchStudentCampaigns();
+        const rawCampaigns = campRes.campaigns || campRes.data || [];
+        if (campRes.success && Array.isArray(rawCampaigns)) {
+          setUpdateRequests(rawCampaigns);
+        }
+      } catch (e) {
+        // non-fatal
       }
       return { success: true };
     }
@@ -459,11 +471,7 @@ export const AuthProvider = ({ children }) => {
   };
 
   const isStudentSubmittedForRequest = (student, request) => {
-    if (!student || !request) return false;
-    if (student.year !== request.targetYear) return false;
-
-    const record = (student.semesterRecords || []).find((r) => r.term === request.targetSemester);
-    return Boolean(record && record.cgpa !== null && record.status === 'Updated');
+    return isStudentSubmittedForCampaign(student, request);
   };
 
   // Administrative Student Actions (HOD)

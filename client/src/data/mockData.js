@@ -426,33 +426,4 @@ export const INITIAL_UPDATE_REQUESTS = [
 ];
 
 // Helper to compute latest completed semester and latest CGPA for a student
-export const getStudentLatestAcademics = (student) => {
-  if (!student) {
-    return {
-      latestSemester: 'None',
-      latestCgpa: null,
-    };
-  }
-  const records = student.semesterRecords || student.aiml_semester_records || [];
-  const sorted = [...records].sort((a, b) => {
-    const semA = a.semesterNumber ?? a.semNumber ?? a.semester_number ?? 0;
-    const semB = b.semesterNumber ?? b.semNumber ?? b.semester_number ?? 0;
-    return semA - semB;
-  });
-  const completed = sorted.filter(r => {
-    const val = r?.cgpa ?? r?.cumulative_cgpa;
-    return val !== null && val !== undefined && val !== '' && !isNaN(Number(val));
-  });
-  if (completed.length === 0) {
-    return {
-      latestSemester: 'None',
-      latestCgpa: null,
-    };
-  }
-  const latest = completed[completed.length - 1];
-  const semNum = latest.semesterNumber ?? latest.semNumber ?? latest.semester_number;
-  return {
-    latestSemester: semNum ? `Semester ${semNum}` : (latest.term || 'None'),
-    latestCgpa: latest.cgpa ?? latest.cumulative_cgpa ?? null,
-  };
-};
+export { getStudentLatestAcademics } from '../utils/academicStatusUtils';
